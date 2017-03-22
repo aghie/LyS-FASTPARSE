@@ -4,7 +4,7 @@ import sys
 
 def read_raw_file(path):
     with codecs.open(path) as f:
-        return f.read().replace('\n',' ')
+        return f.read()#.replace('\n',' ')
 
 
 class UDPipe(object):
