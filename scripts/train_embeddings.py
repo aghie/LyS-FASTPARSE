@@ -45,8 +45,6 @@ def train_embeddings(sentences,path_output,size=50):
                                     sample= 0.1, iter=15, min_count=2)
     model.train(sentences)
     model.wv.save_word2vec_format(path_output)
-    
-    print model.wv.most_similar(positive=["SCONJ"])
 
 
 if __name__ == '__main__':
