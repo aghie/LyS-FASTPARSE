@@ -51,9 +51,6 @@ class CovingtonLSTM:
     def __init__(self, words, pos, rels, w2i, options):
         self.model = Model()
         
-        print pos
-
-        
         if options.optimizer == self.ADAM:
             self.trainer = AdamTrainer(self.model)
         elif options.optimizer == self.SGD:

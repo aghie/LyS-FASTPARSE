@@ -4,10 +4,12 @@ from bcovington import covington
 import bcovington.utils
 import os
 import pickle
+import time
+import tempfile
+import yaml
 """
 Example of execution
 
---input  /data/Universal\ Dependencies\ 2.0/ud-treebanks-conll2017/UD_Spanish/es-ud-train.txt \
 
 python lys_fastparse.py \
 --dynet-seed 123456789 --dynet-mem 4000 \
@@ -25,8 +27,15 @@ python lys_fastparse.py \
 --k2l 0 \
 --usehead \
 --userl \
+--predict \
+--input  /data/Universal\ Dependencies\ 2.0/ud-treebanks-conll2017/UD_Spanish/es-ud-train-proof.txt \
+--model /home/david.vilares/Escritorio/Papers/bist-covington/UD_Basque-optimizer:adam-lstmdims:125-extrn=True-activation:tanh-pembeddings:25-kb:1-k2r:0-wembeddings:125-k1:2-k2l:0-rembeddings:25/barchybrid.model10 \
+--params /home/david.vilares/Escritorio/Papers/bist-covington/UD_Basque-optimizer:adam-lstmdims:125-extrn=True-activation:tanh-pembeddings:25-kb:1-k2r:0-wembeddings:125-k1:2-k2l:0-rembeddings:25/params.pickle \
 
 """
+
+#YAML ATTRIBUTES
+YAML_UDPIPE = "udpipe"
 
 #INPUT TYPES
 INPUT_RAW = "raw"
@@ -41,7 +50,7 @@ UDPIPE_MODEL = "/data/UDpipe/models/gl_udv2"
 if __name__ == '__main__':
     
     parser = ArgumentParser()
-    parser.add_argument("--input", dest="input", help="Path to the input file")
+    parser.add_argument("--input", dest="input", help="Path to the input file",default=None)
     parser.add_argument("--input_type", dest="input_type",help="Style of the input file [raw|conllu]")
     parser.add_argument("--pipe", dest="pipe",default="UDpipe",help="Framework used to do the pipeline. Only \"UDpipe\" supported")
     
@@ -82,17 +91,17 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     
-    #Loaded a pipeline object
-    if args.pipe == PIPELINE_UDPIPE:
-        pipe = utils.UDPipe(UDPIPE_MODEL)
-        
     
+    config = yaml.safe_load(open("configuration.yml"))
+    print config       
+    print config["udpipe"]
     
     #TODO load lookup table for languages?
 
     #PARSING WITH NEURAL COVINGTON
     
     if not args.predictFlag:
+        print "Training..."
         #TRAINING PHASE
         if not (args.rlFlag or args.rlMostFlag or args.headFlag):
             print 'You must use either --userlmost or --userl or --usehead (you can use multiple)'
@@ -118,6 +127,14 @@ if __name__ == '__main__':
             parser.Save(os.path.join(args.output, args.model + str(epoch+1)))
    
     else:
+        print "Predicting... "
+        
+        if args.input == None:
+            raise ValueError("--input must contain a valid path when used --predict")
+        
+        #Loaded a pipeline object
+        if args.pipe == PIPELINE_UDPIPE:
+            pipe = utils.UDPipe(UDPIPE_MODEL, config[YAML_UDPIPE])        
         
         #Reading
         if INPUT_RAW == args.input_type:
@@ -129,6 +146,10 @@ if __name__ == '__main__':
             raise NotImplementedError("--input_type "+args.input_type+" not supported")
         
         
+        print conllu
+        
+        f_temp = tempfile.NamedTemporaryFile("w")
+        f_temp.write(conllu)
         
         
         #TEST PHASE
@@ -137,14 +158,17 @@ if __name__ == '__main__':
 
         stored_opt.external_embedding = args.external_embedding
 
-        parser = CovingtonLSTM(words, pos, rels, w2i, stored_opt)
+        parser = covington.CovingtonLSTM(words, pos, rels, w2i, stored_opt)
         parser.Load(args.model)
-        tespath = os.path.join(args.output, 'test_pred.conll')
+        
+        
+        testpath = f_temp.name #os.path.join(args.output, 'test_pred.conll')
+        print "testpath", testpath
         ts = time.time()
-        pred = list(parser.Predict(args.conll_test))
+        pred = list(parser.Predict(testpath))
         te = time.time()
-        utils.write_conll(tespath, pred)
-        os.system('perl /home/david.vilares/Software/MaltOptimizer-1.0.3/eval.pl -g ' + args.conll_test + ' -s ' + tespath  + ' > ' + tespath + '.txt &')
+        utils.write_conll(testpath, pred)
+        os.system('perl /home/david.vilares/Software/MaltOptimizer-1.0.3/eval.pl -g ' + args.conll_test + ' -s ' + testpath  + ' > ' + testpath + '.txt &')
         print 'Finished predicting test',te-ts
     
     
