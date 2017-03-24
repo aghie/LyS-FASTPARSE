@@ -17,21 +17,26 @@ class CovingtonConfiguration(object):
 
 class ConllEntry(object):
     
-    def __init__(self, id, form, pos, cpos, parent_id=None, relation=None):
+    def __init__(self, id, form, lemma, cpos, pos, feats, 
+                 parent_id=None, relation=None):
+        
         self.id = id
         self.form = form
+        self.lemma = normalize(lemma)
         self.norm = normalize(form)
         self.cpos = cpos.upper()
         self.pos = pos.upper()
+        self.feats = feats.upper()
         self.parent_id = parent_id
         self.relation = relation
 
         #By default everything is assigned to the dummy root
         self.pred_parent_id = 0
         self.pred_relation = 'root'
-        
+    
+    #For debugging
     def __str__(self):
-        return "["+str(self.id)+"]"+self.form+"-"+"("+str(self.parent_id)+","+str(self.relation)+")"+"-"+"("+str(self.pred_parent_id)+","+")"
+        return "["+'\,'.join(map(str,[self.id,self.form,self.lemma,self.norm,self.cpos,self.pos,self.feats,self.parent_id,self.relation]))+"]"
 
 class ParseForest(object):
     def __init__(self, sentence):
@@ -66,15 +71,18 @@ def get_gold_arcs():
 
 
 def isProj(sentence):
+    
     forest = ParseForest(sentence)
     unassigned = {entry.id: sum([1 for pentry in sentence if pentry.parent_id == entry.id]) for entry in sentence}
  
     for _ in xrange(len(sentence)):
+        
         for i in xrange(len(forest.roots) - 1):
             if forest.roots[i].parent_id == forest.roots[i+1].id and unassigned[forest.roots[i].id] == 0:
                 unassigned[forest.roots[i+1].id]-=1
                 forest.Attach(i+1, i)
                 break
+            
             if forest.roots[i+1].parent_id == forest.roots[i].id and unassigned[forest.roots[i+1].id] == 0:
                 unassigned[forest.roots[i].id]-=1
                 forest.Attach(i, i+1)
@@ -83,23 +91,35 @@ def isProj(sentence):
     return len(forest.roots) == 1
 
 def vocab(conll_path):
+    
     wordsCount = Counter()
+    lemmasCount = Counter()
+    cposCount = Counter()
     posCount = Counter()
+    featsCount = Counter()
     relCount = Counter()
 
     with open(conll_path, 'r') as conllFP:
         for sentence in read_conll(conllFP, True):
+
             wordsCount.update([node.norm for node in sentence])
-            posCount.update([node.cpos for node in sentence])
+            lemmasCount.update([node.lemma for node in sentence])
+            cposCount.update([node.cpos for node in sentence])
+            posCount.update([node.pos for node in sentence])
+            featsCount.update([node.feats for node in sentence])
             relCount.update([node.relation for node in sentence])
 
-    return (wordsCount, {w: i for i, w in enumerate(wordsCount.keys())},  posCount.keys(), relCount.keys())
+    return (wordsCount, {w: i for i, w in enumerate(wordsCount.keys())}, 
+            lemmasCount, {l: i for i, l in enumerate(lemmasCount.keys())},
+            cposCount.keys(), posCount.keys(), featsCount.keys(), 
+            relCount.keys())
+
 
 def read_conll(fh, proj):
     
     non_proj_sentences = 0
     read = 0
-    root = ConllEntry(0, '*root*', 'ROOT-POS', 'ROOT-CPOS', 0, 'rroot')
+    root = ConllEntry(0, '*root*', '*root-lemma*', 'ROOT-POS', 'ROOT-CPOS','FEATS-ROOT', 0, 'rroot')
     tokens = [root]
     for line in fh:
         if line.startswith('#'): continue
@@ -118,8 +138,8 @@ def read_conll(fh, proj):
             id = 0
         else:
             try:
-
-                tokens.append(ConllEntry(int(tok[0]), tok[1], tok[4], tok[3], int(tok[6]) if tok[6] != '_' else -1, tok[7]))
+                tokens.append(ConllEntry(int(tok[0]), tok[1], tok[2] ,tok[3], 
+                                         tok[4], tok[5], int(tok[6]) if tok[6] != '_' else -1, tok[7]))
             except ValueError:
                 pass
 
@@ -146,8 +166,8 @@ numberRegex = re.compile("[0-9]+|[0-9]+\\.[0-9]+|[0-9]+[0-9,]+");
 def normalize(word):
     return 'NUM' if numberRegex.match(word) else word.lower()
 
-cposTable = {"PRP$": "PRON", "VBG": "VERB", "VBD": "VERB", "VBN": "VERB", ",": ".", "''": ".", "VBP": "VERB", "WDT": "DET", "JJ": "ADJ", "WP": "PRON", "VBZ": "VERB", 
-             "DT": "DET", "#": ".", "RP": "PRT", "$": ".", "NN": "NOUN", ")": ".", "(": ".", "FW": "X", "POS": "PRT", ".": ".", "TO": "PRT", "PRP": "PRON", "RB": "ADV", 
-             ":": ".", "NNS": "NOUN", "NNP": "NOUN", "``": ".", "WRB": "ADV", "CC": "CONJ", "LS": "X", "PDT": "DET", "RBS": "ADV", "RBR": "ADV", "CD": "NUM", "EX": "DET", 
-             "IN": "ADP", "WP$": "PRON", "MD": "VERB", "NNPS": "NOUN", "JJS": "ADJ", "JJR": "ADJ", "SYM": "X", "VB": "VERB", "UH": "X", "ROOT-POS": "ROOT-CPOS", 
-             "-LRB-": ".", "-RRB-": "."}
+# cposTable = {"PRP$": "PRON", "VBG": "VERB", "VBD": "VERB", "VBN": "VERB", ",": ".", "''": ".", "VBP": "VERB", "WDT": "DET", "JJ": "ADJ", "WP": "PRON", "VBZ": "VERB", 
+#              "DT": "DET", "#": ".", "RP": "PRT", "$": ".", "NN": "NOUN", ")": ".", "(": ".", "FW": "X", "POS": "PRT", ".": ".", "TO": "PRT", "PRP": "PRON", "RB": "ADV", 
+#              ":": ".", "NNS": "NOUN", "NNP": "NOUN", "``": ".", "WRB": "ADV", "CC": "CONJ", "LS": "X", "PDT": "DET", "RBS": "ADV", "RBR": "ADV", "CD": "NUM", "EX": "DET", 
+#              "IN": "ADP", "WP$": "PRON", "MD": "VERB", "NNPS": "NOUN", "JJS": "ADJ", "JJR": "ADJ", "SYM": "X", "VB": "VERB", "UH": "X", "ROOT-POS": "ROOT-CPOS", 
+#              "-LRB-": ".", "-RRB-": "."}

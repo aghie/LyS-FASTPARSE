@@ -21,7 +21,10 @@ python lys_fastparse.py \
 --usehead \
 --userl \
 
+
+
 ## TODO
 
 TODO: Add support to select the right UDpipe model (now it is hard-coded)
-TODO: It seems to be a problem with the sentence tokenization 
+
+TODO: Modify bist-code to accept different columns of information from CoNLLU files

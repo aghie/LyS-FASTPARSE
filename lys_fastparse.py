@@ -59,6 +59,7 @@ if __name__ == '__main__':
     parser.add_argument("--test", dest="conll_test", help="Annotated CONLL test file", metavar="FILE", default="../data/PTB_SD_3_3_0/test.conll")
     parser.add_argument("--params", dest="params", help="Parameters file", metavar="FILE", default="params.pickle")
     parser.add_argument("--extrn", dest="external_embedding", help="External embeddings", metavar="FILE")
+    parser.add_argument("--extrn_cpos", dest="cpos_external_embedding",help="CPoStag external embeddings", metavar="FILE")
     parser.add_argument("--model", dest="model", help="Load/Save model file", metavar="FILE", default="barchybrid.model")
     parser.add_argument("--wembedding", type=int, dest="wembedding_dims", default=100)
     parser.add_argument("--pembedding", type=int, dest="pembedding_dims", default=25)
@@ -86,18 +87,14 @@ if __name__ == '__main__':
     parser.add_argument("--predict", action="store_true", dest="predictFlag", default=False)
     parser.add_argument("--dynet-mem", type=int, dest="cnn_mem", default=512)
     
-    
-    
-    
+
     args = parser.parse_args()
-    
-    
+        
     config = yaml.safe_load(open("configuration.yml"))
     print config       
     print config["udpipe"]
     
     #TODO load lookup table for languages?
-
     #PARSING WITH NEURAL COVINGTON
     
     if not args.predictFlag:
@@ -108,14 +105,17 @@ if __name__ == '__main__':
             sys.exit()
 
         print 'Preparing vocab'
-        words, w2i, pos, rels = bcovington.utils.vocab(args.conll_train)
+        words, w2i, lemmas, l2i, cpos, pos, feats, rels = bcovington.utils.vocab(args.conll_train)
+
+        print "lysparse-cpos", cpos
+        print "lysparse-pos", pos
 
         with open(os.path.join(args.output, args.params), 'w') as paramsfp:
-            pickle.dump((words, w2i, pos, rels, args), paramsfp)
+            pickle.dump((words, w2i, lemmas, l2i, cpos, pos, rels, args), paramsfp)
         print 'Finished collecting vocab'
 
         print 'Initializing blstm covington:'
-        parser = covington.CovingtonLSTM(words, pos, rels, w2i, args)
+        parser = covington.CovingtonBILSTM(words, lemmas, cpos, pos, rels, w2i, l2i, args)
 
         for epoch in xrange(args.epochs):
             print 'Starting epoch', epoch
@@ -125,7 +125,6 @@ if __name__ == '__main__':
             os.system('perl /home/david.vilares/Software/MaltOptimizer-1.0.3/eval.pl -g ' + args.conll_dev + ' -s ' + devpath  + ' > ' + devpath + '.txt &')
             print 'Finished predicting dev'
             parser.Save(os.path.join(args.output, args.model + str(epoch+1)))
-   
     else:
         print "Predicting... "
         
@@ -145,12 +144,10 @@ if __name__ == '__main__':
         else:
             raise NotImplementedError("--input_type "+args.input_type+" not supported")
         
-        
         print conllu
         
         f_temp = tempfile.NamedTemporaryFile("w")
         f_temp.write(conllu)
-        
         
         #TEST PHASE
         with open(args.params, 'r') as paramsfp:
@@ -158,7 +155,7 @@ if __name__ == '__main__':
 
         stored_opt.external_embedding = args.external_embedding
 
-        parser = covington.CovingtonLSTM(words, pos, rels, w2i, stored_opt)
+        parser = covington.CovingtonBILSTM(words, lemmas, cpos, pos, rels, w2i, l2i, stored_opt)
         parser.Load(args.model)
         
         

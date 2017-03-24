@@ -11,7 +11,10 @@ Example:
 
 python train_embeddings.py \
 --input_conll /data/Universal\ Dependencies\ 2.0/ud-treebanks-conll2017/UD_Spanish/es-ud-train.conllu \
---column_to_embed 3 
+--output_dir /home/david.vilares/Escritorio/Papers/bist-covington/UD_CPOSTAG_embeddings_conllu_train/ \
+--column_to_embed 3 \
+--size_embedding 25 \
+--window 2 \
 
 """
 
@@ -40,8 +43,8 @@ def read_conll_to_raw(path_conll,column):
 
     return sentences
 
-def train_embeddings(sentences,path_output,size=50):
-    model = gensim.models.Word2Vec(sentences,sg=1, size=size, window=10, negative=5, hs=0,
+def train_embeddings(sentences,path_output,size=50,window=2):
+    model = gensim.models.Word2Vec(sentences,sg=1, size=size, window=window, negative=5, hs=0,
                                     sample= 0.1, iter=15, min_count=2)
     model.train(sentences)
     model.wv.save_word2vec_format(path_output)
@@ -55,10 +58,13 @@ if __name__ == '__main__':
     parser.add_argument("--column_to_embed", dest="column_to_embed",type=int,help="Column from the CoNLLU file to be learned as embeddings", default="1",required=True)
     parser.add_argument("--output_dir", dest="output_dir",help="Path to the output dir", default="/tmp/")
     parser.add_argument("--size_embedding",dest="size_embedding", type=int, help="Desired size of embeddings", default=50)
+    parser.add_argument("--window",dest="window", type=int, help="The maximum distance between the current and predicted word within a sentence", 
+                        default=2)
     args = parser.parse_args()
     column = args.column_to_embed
     path_output = args.output_dir
     size_e = args.size_embedding
+    window_e = args.window
     
     
     if args.input_dir is not None:
@@ -74,14 +80,16 @@ if __name__ == '__main__':
             for path in treebank_files:
                 sentences.extend(read_conll_to_raw(path,column)) 
                 
-            train_embeddings(sentences, path_output+os.sep+name_treebank+"_c-"+str(column),size_e)
+            train_embeddings(sentences, path_output+os.sep+name_treebank+"_c-"+str(column)+"_s-"+str(size_e)+"_w-"+str(window_e),
+                             size=size_e,window=window_e)
     
     elif args.input_conll is not None:
         name_treebank = args.input_conll.split("/")[-2]
         print name_treebank
         path_conll = args.input_conll
         sentences = read_conll_to_raw(path_conll,column)        
-        train_embeddings(sentences, path_output+name_treebank,size_e)
+        train_embeddings(sentences,path_output+os.sep+name_treebank+"_c-"+str(column)+"_s-"+str(size_e)+"_w-"+str(window_e),
+                         size=size_e,window=window_e)
 
     else: 
         raise ValueError("--input_conll or --input_dir must be activated")    

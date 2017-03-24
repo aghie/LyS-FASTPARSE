@@ -12,7 +12,7 @@ from geopy.units import arcsec
 
 
 
-class CovingtonLSTM:
+class CovingtonBILSTM:
     
     #ACTIVATION FUNCTIONS
     TANH = 'tanh'
@@ -40,15 +40,12 @@ class CovingtonLSTM:
     RIGHT_ARC = 1
     SHIFT = 2
     NO_ARC = 3
-    
     TRANSITIONS = [LEFT_ARC, RIGHT_ARC, SHIFT, NO_ARC]    
-    NON_VALID_TRANSITION = 4 #TODO: not sure if a need this
 
     #OTHER HYPERPARAMETERS
-    #the size of the output layer is the number of valid transitions
-    SIZE_OUTPUT_LAYER = len(TRANSITIONS)
+    SIZE_TRANSITIONS = len(TRANSITIONS)
     
-    def __init__(self, words, pos, rels, w2i, options):
+    def __init__(self, words, lemmas, cpos, pos, rels, w2i, l2i, options):
         self.model = Model()
         
         if options.optimizer == self.ADAM:
@@ -66,23 +63,42 @@ class CovingtonLSTM:
                      
         random.seed(1)
 
-        self.activations = {self.TANH: tanh, self.SIGMOID: logistic, self.RELU: rectify, self.TANH3: (lambda x: tanh(cwise_multiply(cwise_multiply(x, x), x)))}
+        self.activations = {self.TANH: tanh, 
+                            self.SIGMOID: logistic, 
+                            self.RELU: rectify, 
+                            self.TANH3: (lambda x: tanh(cwise_multiply(cwise_multiply(x, x), x)))}
+        
         self.activation = self.activations[options.activation]
 
         self.oracle = options.oracle
         
-        self.ldims = options.lstm_dims * 2 #Por que por 2? Por ser BiLSTM, los vectores se concatenan (creo que es por eso)
-        self.wdims = options.wembedding_dims #Word embeddings
-        self.pdims = options.pembedding_dims #Postag embeddings
-        self.rdims = options.rembedding_dims #Relation embeddings
+        
+        self.ldims = options.lstm_dims * 2 #*2 because it is a bi-lstm
+        self.wdims = options.wembedding_dims 
+        self.pdims = options.pembedding_dims 
+        self.rdims = options.rembedding_dims 
         self.layers = options.lstm_layers
         self.wordsCount = words
-        #Dictionary {word:index} Why index is plus 3? Because they are using special symbols for indexes 1 and 2
+        
+        print self.wdims
+        print self.pdims
+        print self.rdims
+
         self.vocab = {word: ind+self.INIT_WORD_INDEX for word, ind in w2i.iteritems()} 
-        #print ("self.vocab", self.vocab)
-        self.pos = {word: ind+self.INIT_POS_INDEX for ind, word in enumerate(pos)}
-        self.rels = {word: ind for ind, word in enumerate(rels)} #Dict dependency types:index
-        self.irels = rels #List of dependency types
+        self.cpos = {cpos: ind+self.INIT_POS_INDEX for ind, cpos in enumerate(cpos)}
+        self.pos = {pos: ind+self.INIT_POS_INDEX for ind, pos in enumerate(pos)}
+        #TODO : Do we need special indexes for feats too
+        #self.feats = {feats: }
+        self.rels = {word: ind for ind, word in enumerate(rels)}
+        
+        print "cpos", cpos
+        print "pos", pos
+        print "self.cpos", self.cpos
+        print "self.pos", self.pos
+     #   print "self.feats", self.feats
+
+        #List of dependency types
+        self.irels = rels 
 
         self.headFlag = options.headFlag
         self.rlMostFlag = options.rlMostFlag
@@ -94,27 +110,84 @@ class CovingtonLSTM:
 
         self.nnvecs = (1 if self.headFlag else 0) + (2 if self.rlFlag or self.rlMostFlag else 0)
 
-
+        #INFORMATION FOR EXTERNAL WORD EMBEDDINGS
         self.external_embedding = None
-        if options.external_embedding is not None:
-            external_embedding_fp = open(options.external_embedding,'r')
-            external_embedding_fp.readline()
-            self.external_embedding = {line.split(' ')[0] : [float(f) for f in line.strip().split(' ')[1:]] for line in external_embedding_fp}
-            external_embedding_fp.close()
+        self.edim = None
+        self.noextrn = None
+        self.extrnd = None
+        self.elookup = None
+        self.external_embedding, self.edim,self.noextrn,self.extrnd, self.elookup = self._assign_external_embeddings(options.external_embedding,
+                                                                                                                    self.INDEX_WORD_PAD, self.INDEX_WORD_INITIAL)
+                
+        #INFORMATION FOR EXTERNAL CPOSTAG EMBEDDING
+        self.cpos_external_embedding = None
+        self.cpos_edim = None
+        self.cpos_noextrn = None
+        self.cpos_extrnd = None
+        self.cpos_elookup = None
+        self.cpos_external_embedding, self.cpos_edim,self.cpos_noextrn,self.cpos_extrnd, self.cpos_elookup = self._assign_external_embeddings(options.cpos_external_embedding,
+                                                                                                                                             self.INDEX_POS_PAD, self.INDEX_POS_INITIAL)
+                
 
-            self.edim = len(self.external_embedding.values()[0])
-            self.noextrn = [0.0 for _ in xrange(self.edim)]
-            self.extrnd = {word: i + self.INIT_WORD_INDEX for i, word in enumerate(self.external_embedding)}
-            self.elookup = self.model.add_lookup_parameters((len(self.external_embedding) + 3, self.edim))
+
+
+        #TODO: Try to factor this
+        #For external word embeddings
+#         self.external_embedding = None
+#         if options.external_embedding is not None:
+#             external_embedding_fp = open(options.external_embedding,'r')
+#             external_embedding_fp.readline()
+#             self.external_embedding = {line.split(' ')[0] : [float(f) for f in line.strip().split(' ')[1:]] 
+#                                        for line in external_embedding_fp}
+#             external_embedding_fp.close()
+# 
+#             self.edim = len(self.external_embedding.values()[0])
+#             self.noextrn = [0.0 for _ in xrange(self.edim)]
+#             self.extrnd = {word: i + self.INIT_WORD_INDEX for i, word in enumerate(self.external_embedding)}
+#             self.elookup = self.model.add_lookup_parameters((len(self.external_embedding) + self.INIT_WORD_INDEX, self.edim))
+#             
+#             for word, i in self.extrnd.iteritems():
+#                  self.elookup.init_row(i, self.external_embedding[word])
+#             self.extrnd['*PAD*'] = self.INDEX_WORD_PAD
+#             self.extrnd['*INITIAL*'] = self.INDEX_WORD_INITIAL
+# 
+#             print 'Load external embedding. Vector dimensions', self.edim
             
-            for word, i in self.extrnd.iteritems():
-                 self.elookup.init_row(i, self.external_embedding[word])
-            self.extrnd['*PAD*'] = self.INDEX_WORD_PAD
-            self.extrnd['*INITIAL*'] = self.INDEX_WORD_INITIAL
+#         #For external Cpostag embeddings
+#         self.cpos_external_embedding = None
+#         if options.cpos_external_embedding is not None:
+#             
+#             cpos_external_embedding_fp = open(options.cpos_external_embedding,'r')
+#             cpos_external_embedding_fp.readline()
+#             self.cpos_external_embedding = {line.split(' ')[0] : [float(f) for f in line.strip().split(' ')[1:]] 
+#                                        for line in cpos_external_embedding_fp}
+#             cpos_external_embedding_fp.close()
+# 
+#             self.cpos_edim = len(self.cpos_external_embedding.values()[0])
+#             self.cpos_noextrn = [0.0 for _ in xrange(self.cpos_edim)]
+#             self.cpos_extrnd = {cpostag: i + self.INIT_POS_INDEX 
+#                                 for i, cpostag in enumerate(self.cpos_external_embedding)}
+#             self.cpos_elookup = self.model.add_lookup_parameters((len(self.cpos_external_embedding) + self.INIT_POS_INDEX, self.cpos_edim))
+#             
+#             for cpostag, i in self.cpos_extrnd.iteritems():
+#                  self.cpos_elookup.init_row(i, self.cpos_external_embedding[cpostag])
+#             self.cpos_extrnd['*PAD*'] = self.INDEX_POS_PAD
+#             self.cpos_extrnd['*INITIAL*'] = self.INDEX_POS_INITIAL
+# 
+#             print 'Load cpostag external embedding. Vector dimensions', self.cpos_edim
+            
+            
+        
+                      
 
-            print 'Load external embedding. Vector dimensions', self.edim
-
-        dims = self.wdims + self.pdims + (self.edim if self.external_embedding is not None else 0)
+        #dims = self.wdims + self.pdims + (self.edim if self.external_embedding is not None else 0)
+        dims = (self.wdims + self.pdims + (self.edim if self.external_embedding is not None else 0) + 
+                                          (self.cpos_edim if self.cpos_external_embedding is not None else 0))
+        
+        
+        print self.ldims
+        print self.ldims*0.5
+        print ("dims",dims)
         
         self.blstmFlag = options.blstmFlag
         self.bibiFlag = options.bibiFlag
@@ -130,19 +203,23 @@ class CovingtonLSTM:
             else:
                 self.surfaceBuilders = [SimpleRNNBuilder(1, dims, self.ldims * 0.5, self.model), LSTMBuilder(1, dims, self.ldims * 0.5, self.model)]
 
+
         self.hidden_units = options.hidden_units
         self.hidden2_units = options.hidden2_units
         self.vocab['*PAD*'] = self.INDEX_WORD_PAD
-        self.pos['*PAD*'] = self.INDEX_POS_PAD
+        self.cpos['*PAD*'] = self.INDEX_POS_PAD
 
         self.vocab['*INITIAL*'] = self.INDEX_WORD_INITIAL
-        self.pos['*INITIAL*'] = self.INDEX_POS_INITIAL
+        self.cpos['*INITIAL*'] = self.INDEX_POS_INITIAL
 
-        self.wlookup = self.model.add_lookup_parameters((len(words) + 3, self.wdims))
-        self.plookup = self.model.add_lookup_parameters((len(pos) + 3, self.pdims))
+        self.wlookup = self.model.add_lookup_parameters((len(words) + self.INIT_WORD_INDEX, self.wdims))
+        self.plookup = self.model.add_lookup_parameters((len(cpos) + self.INIT_POS_INDEX, self.pdims))
         self.rlookup = self.model.add_lookup_parameters((len(rels), self.rdims))
 
-        self.word2lstm = self.model.add_parameters((self.ldims, self.wdims + self.pdims + (self.edim if self.external_embedding is not None else 0)))
+        
+        #self.word2lstm = self.model.add_parameters((self.ldims, self.wdims + self.pdims + (self.edim if self.external_embedding is not None else 0)))
+        self.word2lstm = self.model.add_parameters((self.ldims, dims))
+        
         self.word2lstmbias = self.model.add_parameters((self.ldims))
         self.lstm2lstm = self.model.add_parameters((self.ldims, self.ldims * self.nnvecs + self.rdims))
         self.lstm2lstmbias = self.model.add_parameters((self.ldims))
@@ -153,8 +230,8 @@ class CovingtonLSTM:
         self.hid2Layer = self.model.add_parameters((self.hidden2_units, self.hidden_units))
         self.hid2Bias = self.model.add_parameters((self.hidden2_units))
 
-        self.outLayer = self.model.add_parameters((self.SIZE_OUTPUT_LAYER, self.hidden2_units if self.hidden2_units > 0 else self.hidden_units))
-        self.outBias = self.model.add_parameters((self.SIZE_OUTPUT_LAYER))
+        self.outLayer = self.model.add_parameters((self.SIZE_TRANSITIONS, self.hidden2_units if self.hidden2_units > 0 else self.hidden_units))
+        self.outBias = self.model.add_parameters((self.SIZE_TRANSITIONS))
 
         self.rhidLayer = self.model.add_parameters((self.hidden_units, self.ldims * self.nnvecs * (self.kl1 + self.kl2_l + self.kl2_r  + self.kb)))
         self.rhidBias = self.model.add_parameters((self.hidden_units))
@@ -164,6 +241,43 @@ class CovingtonLSTM:
 
         self.routLayer = self.model.add_parameters((2 * (len(self.irels) + 0) + 1, self.hidden2_units if self.hidden2_units > 0 else self.hidden_units))
         self.routBias = self.model.add_parameters((2 * (len(self.irels) + 0) + 1))
+
+
+
+    def _assign_external_embeddings(self,option_external_embedding,
+                                    index_pad,index_initial):
+            
+        print option_external_embedding
+        if option_external_embedding is not None:
+            
+            print "Entra _assign_external_embedding"
+                
+            external_embedding_fp = open(option_external_embedding,'r')
+            external_embedding_fp.readline()
+                
+            external_embedding = {line.split(' ')[0] : [float(f) for f in line.strip().split(' ')[1:]] 
+                                           for line in external_embedding_fp}
+            external_embedding_fp.close()
+    
+    
+    
+            edim = len(external_embedding.values()[0])
+            noextrn = [0.0 for _ in xrange(edim)]
+            extrnd = {element: i + self.INIT_POS_INDEX 
+                                    for i, element in enumerate(external_embedding)}
+            elookup = self.model.add_lookup_parameters((len(external_embedding) + self.INIT_POS_INDEX, edim))
+                
+            for element, i in extrnd.iteritems():
+                    elookup.init_row(i, external_embedding[element])
+            extrnd['*PAD*'] = index_pad
+            extrnd['*INITIAL*'] = index_initial
+
+            print 'Load cpostag external embedding. Vector dimensions', edim            
+            
+            return external_embedding, edim, noextrn, extrnd, elookup
+    
+        return None,None,None,None,None
+
 
 
     def __evaluate(self, c, train):
@@ -236,12 +350,17 @@ class CovingtonLSTM:
         
  #       print [(word.form, word.cpos) for word in sentence], train
         for root in sentence:
+            print "Llega 1"
             c = float(self.wordsCount.get(root.norm, 0))
             dropFlag =  not train or (random.random() < (c/(0.25+c)))
+            print "Llega 1.25"
+            sys.stdout.flush()
             root.wordvec = self.wlookup[int(self.vocab.get(root.norm, 0)) if dropFlag else 0]
-            #TODO: Changed to parse universal tags. UPdate to be compatible also with fine postags
-            root.posvec = self.plookup[int(self.pos.get(root.cpos,0))] if self.pdims > 0 else None
+            print "Llega 1.5"
+            root.cposvec = self.plookup[int(self.cpos.get(root.cpos,0))] if self.pdims > 0 else None
 
+            print "Llega 2"
+            #For word embeddings
             if self.external_embedding is not None:
                 #if not dropFlag and random.random() < 0.5:
                 #    root.evec = self.elookup[0]
@@ -253,7 +372,22 @@ class CovingtonLSTM:
                     root.evec = self.elookup[0]
             else:
                 root.evec = None
-            root.ivec = concatenate(filter(None, [root.wordvec, root.posvec, root.evec]))
+            
+            print "Llega 3"
+            #For postag embeddings
+            if self.cpos_external_embedding is not None:
+                if root.cpos in self.cpos_external_embedding:
+                    root.cposevec = self.cpos_elookup[self.cpos_extrnd[root.cpos]]
+                elif root.norm in self.external_embedding:
+                    root.cposevec = self.cpos_elookup[self.cpos_extrnd[root.cpos]]
+                else:
+                    root.cposevec = self.cpos_elookup[0]
+            else:
+                root.cposevec = None
+                
+            print "Llega 4"
+            root.ivec = concatenate(filter(None, [root.wordvec, root.cposvec, root.evec, root.cposevec]))
+            
 
         if self.blstmFlag:
             forward  = self.surfaceBuilders[0].initial_state()
@@ -348,12 +482,11 @@ class CovingtonLSTM:
 
                     c = CovingtonConfiguration(l1,b,sentence,arcs)
                 renew_cg()
-       #         print "[sentence[-1]] + sentence[:-1]",[sentence[-1].form] + [w.form for w in sentence[:-1]]
                 yield sentence
-                #yield [sentence[-1]] + sentence[:-1]
 
 
     def Train(self, conll_path):
+        print "Llega 1"
         mloss = 0.0
         errors = 0
         batch = 0
@@ -395,9 +528,9 @@ class CovingtonLSTM:
                     lerrors = 0
                     ltotal = 0
 
-                
+                print "Llega 2"
                 self.getWordEmbeddings(sentence, True)
-                
+                print "Llega 3"
                 
                 #We obtain the gold arcs to then compute the dynamic oracle for covington
                 gold_arcs = set([])
