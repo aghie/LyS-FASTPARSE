@@ -122,26 +122,48 @@ def read_conll(fh, proj):
     root = ConllEntry(0, '*root*', '*root-lemma*', 'ROOT-POS', 'ROOT-CPOS','FEATS-ROOT', 0, 'rroot')
     tokens = [root]
     for line in fh:
+        
         if line.startswith('#'): continue
-        tok = line.strip().split()
-    #    print tok, not tok, read
-        if not tok: #If it is empty line
+        
+        tok = line.strip().split('\t')
+
+        if not tok or tok == ['']: #If it is empty line
             if len(tokens)>1:
-#                 if not proj or isProj(tokens):
                 yield tokens
                 if not isProj(tokens):
-#                 else:
-#                     print 'Non-projective sentence dropped'
                     non_proj_sentences += 1
                 read += 1
             tokens = [root]
             id = 0
         else:
             try:
+            #    print tok
+                if "." in tok[0] or "-" in tok[0]: continue
                 tokens.append(ConllEntry(int(tok[0]), tok[1], tok[2] ,tok[3], 
-                                         tok[4], tok[5], int(tok[6]) if tok[6] != '_' else -1, tok[7]))
-            except ValueError:
+                                         tok[4], tok[5], int(tok[6]) if tok[6] != '_' else -1 , tok[7]))
+           #     print len(tokens)
+
+            except IndexError:
                 pass
+
+
+#         if not tok: #If it is empty line
+#             if len(tokens)>1:
+#                 yield tokens
+#                 if not isProj(tokens):
+#                     non_proj_sentences += 1
+#                 read += 1
+#             tokens = [root]
+#             id = 0
+#         else:
+#             try:
+#                 print tok
+#                 if "." in tok[0] or "-" in tok[0] or len(tok) == 1: continue
+#                 tokens.append(ConllEntry(int(tok[0]), tok[1], tok[2] ,tok[3], 
+#                                          tok[4], tok[5], int(tok[6]) , tok[7]))
+# 
+#             except IndexError:
+#                 pass
 
     #For the  last sentence, if the case?
     if len(tokens) > 1:
