@@ -9,8 +9,17 @@ import warnings
 from utils import get_udpipemodel, UDPipe, read_raw_file
 
 """
-PYTHONPATH="lysfastparse" python lysfastparse/scripts/gold_to_predicted_conll.py /data/david.vilares/ud-treebanks-conll2017 \
-/data/david.vilares/ud-treebanks-conll2017-predicted \
+
+Creates CoNLLU training sets with predicted POStags (given by UDpipe)
+
+PYTHONPATH="lysfastparse" python lysfastparse/scripts/gold_to_predicted_conll.py \
+GOLDPOS_DIR_TREEBANKS \
+DEST_PREDICTEDPOS_DIR_TREEBANKS \
+DIR_UDPIPE_MODEL \
+PATH_BIN_UDPIPE
+
+PYTHONPATH="lysfastparse" python lysfastparse/scripts/gold_to_predicted_conll.py /data/david.vilares/ud-treebanks-conll2017-D \
+/data/david.vilares/ud-treebanks-conll2017-D-pPOS \
 /data/david.vilares/UDpipe/udpipe-ud-2.0-conll17-170315/models \
 /opt/udpipe-1.1.0-bin/bin-linux64/udpipe
 """
@@ -53,7 +62,7 @@ for path_gold_treebank, name_treebank in path_gold_treebanks:
         os.mkdir(path_dest_treebank)
     
     with codecs.open(path_train_conll_treebank[0][0]) as f_train:
-         conllu_file = f_train.read()
+        conllu_file = f_train.read()
 
     tagged_conllu  = udpipe_model.run(conllu_file, options ="--input conllu --tag")
 
