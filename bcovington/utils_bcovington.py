@@ -24,9 +24,9 @@ class ConllEntry(object):
         self.form = form
         self.lemma = normalize(lemma)
         self.norm = normalize(form)
-        self.cpos = cpos.upper()
-        self.pos = pos.upper()
-        self.feats = feats.upper()
+        self.cpos = cpos#.upper()
+        self.pos = pos#.upper()
+        self.feats = feats#.upper()
         self.parent_id = parent_id
         self.relation = relation
 
@@ -66,9 +66,6 @@ class ParseForest(object):
         child.pred_parent_id = parent.id
         del self.roots[child_index]
         
-def get_gold_arcs():
-    pass
-
 
 def isProj(sentence):
     

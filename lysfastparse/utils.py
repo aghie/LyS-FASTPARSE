@@ -107,7 +107,14 @@ def dump_lookup_extra_into_conll(conll_path,lookup):
     f_conll.close()
             
     
+def get_OOV_words_from_conll(word2vec_model, path_conllus):
+    
+    ovvs = set([])
+    for path_conllu in path_conllus:
+        with codecs.open(path_conllu) as f_conllu:
+            f_conllu.read()
 
+    
 
 
 def get_facebook_embeddings(name_treebank, path_fb_embeddings):

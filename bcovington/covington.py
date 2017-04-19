@@ -1,14 +1,14 @@
 from dynet import *
-from utils_bcovington import ParseForest, read_conll, write_conll, CovingtonConfiguration, get_gold_arcs
+from utils_bcovington import ParseForest, read_conll, write_conll, CovingtonConfiguration
 from operator import itemgetter
 from itertools import chain
+from geopy.units import arcsec
+from tarjan import tarjan
 import utils, time, random
 import numpy as np
-from tarjan import tarjan
 import copy
 import os
-from geopy.units import arcsec
-
+import warnings
 
 
 class CovingtonBILSTM:
@@ -34,6 +34,10 @@ class CovingtonBILSTM:
     INIT_WORD_INDEX = 3
     INIT_POS_INDEX = INIT_WORD_INDEX
     
+    INDEX_FEATS_PAD = 1
+    INDEX_FEATS_INITIAL= 2
+    INIT_FEATS_INDEX = INIT_WORD_INDEX
+    
     #TRANSITIONS
     LEFT_ARC = 0
     RIGHT_ARC = 1
@@ -44,7 +48,7 @@ class CovingtonBILSTM:
     #OTHER HYPERPARAMETERS
     SIZE_TRANSITIONS = len(TRANSITIONS)
     
-    def __init__(self, words, lemmas, cpos, pos, rels, w2i, l2i, options):
+    def __init__(self, words, lemmas, cpos, pos, feats, rels, w2i, l2i, options):
         
         sys.stdout.flush()
         self.model = Model()
@@ -78,25 +82,31 @@ class CovingtonBILSTM:
         self.wdims = options.wembedding_dims 
         self.pdims = options.pembedding_dims 
         self.rdims = options.rembedding_dims 
+      #  self.fdims = options.fembedding_dims
         self.layers = options.lstm_layers
         self.wordsCount = words
         
         print self.wdims
         print self.pdims
         print self.rdims
+      #  print "self.fdims",self.fdims
 
         self.vocab = {word: ind+self.INIT_WORD_INDEX for word, ind in w2i.iteritems()} 
         self.cpos = {cpos: ind+self.INIT_POS_INDEX for ind, cpos in enumerate(cpos)}
         self.pos = {pos: ind+self.INIT_POS_INDEX for ind, pos in enumerate(pos)}
+        
         #TODO : Do we need special indexes for feats too
-        #self.feats = {feats: }
+        self.feats = {f: ind+self.INIT_FEATS_INDEX for ind, f in enumerate(feats)}
+        
+        
+        
         self.rels = {word: ind for ind, word in enumerate(rels)}
         
         print "cpos", cpos
         print "pos", pos
         print "self.cpos", self.cpos
         print "self.pos", self.pos
-     #   print "self.feats", self.feats
+        print "self.feats", self.feats
 
         #List of dependency types
         self.irels = rels 
@@ -117,89 +127,57 @@ class CovingtonBILSTM:
         self.noextrn = None
         self.extrnd = None
         self.elookup = None
-        self.external_embedding, self.edim,self.noextrn,self.extrnd, self.elookup = self._assign_external_embeddings(options.external_embedding,
+        if options.external_embedding is not None and os.path.exists(options.external_embedding):
+            self.external_embedding, self.edim,self.noextrn,self.extrnd, self.elookup = self._assign_external_embeddings(options.external_embedding,
                                                                                                                     self.INDEX_WORD_PAD, self.INDEX_WORD_INITIAL)
+        else:
+            warnings.warn("Not using any external file for FORM embeddings")
                 
-        #INFORMATION FOR EXTERNAL CPOSTAG EMBEDDING
+        #INFORMATION FOR THE EXTERNAL CPOSTAG EMBEDDINGS
         self.cpos_external_embedding = None
         self.cpos_edim = None
         self.cpos_noextrn = None
         self.cpos_extrnd = None
         self.cpos_elookup = None
-        self.cpos_external_embedding, self.cpos_edim,self.cpos_noextrn,self.cpos_extrnd, self.cpos_elookup = self._assign_external_embeddings(options.cpos_external_embedding,
+        if options.cpos_external_embedding is not None and os.path.exists(options.cpos_external_embedding):
+            self.cpos_external_embedding, self.cpos_edim,self.cpos_noextrn,self.cpos_extrnd, self.cpos_elookup = self._assign_external_embeddings(options.cpos_external_embedding,
                                                                                                                                              self.INDEX_POS_PAD, self.INDEX_POS_INITIAL)
-                
-
+        else:
+            warnings.warn("Not using any external file for CPOSTAG embeddings")
+        #INFORMATION FOR THE EXTERNAL POSTAG EMBEDDINGS
         self.pos_external_embedding = None
         self.pos_edim = None
         self.pos_noextrn = None
         self.pos_extrnd = None
         self.pos_elookup= None
-        self.pos_external_embedding, self.pos_edim,self.pos_noextrn,self.pos_extrnd, self.pos_elookup = self._assign_external_embeddings(options.pos_external_embedding,
+        if options.pos_external_embedding is not None and os.path.exists(options.pos_external_embedding):
+            self.pos_external_embedding, self.pos_edim,self.pos_noextrn,self.pos_extrnd, self.pos_elookup = self._assign_external_embeddings(options.pos_external_embedding,
                                                                                                                                              self.INDEX_POS_PAD, self.INDEX_POS_INITIAL)
-                 
-#         
-# 
-# 
-#         print self.cpos_external_embedding
-
-        #TODO: Try to factor this
-        #For external word embeddings
-#         self.external_embedding = None
-#         if options.external_embedding is not None:
-#             external_embedding_fp = open(options.external_embedding,'r')
-#             external_embedding_fp.readline()
-#             self.external_embedding = {line.split(' ')[0] : [float(f) for f in line.strip().split(' ')[1:]] 
-#                                        for line in external_embedding_fp}
-#             external_embedding_fp.close()
-# 
-#             self.edim = len(self.external_embedding.values()[0])
-#             self.noextrn = [0.0 for _ in xrange(self.edim)]
-#             self.extrnd = {word: i + self.INIT_WORD_INDEX for i, word in enumerate(self.external_embedding)}
-#             self.elookup = self.model.add_lookup_parameters((len(self.external_embedding) + self.INIT_WORD_INDEX, self.edim))
-#             
-#             for word, i in self.extrnd.iteritems():
-#                  self.elookup.init_row(i, self.external_embedding[word])
-#             self.extrnd['*PAD*'] = self.INDEX_WORD_PAD
-#             self.extrnd['*INITIAL*'] = self.INDEX_WORD_INITIAL
-# 
-#             print 'Load external embedding. Vector dimensions', self.edim
-            
-#         #For external Cpostag embeddings
-#         self.cpos_external_embedding = None
-#         if options.cpos_external_embedding is not None:
-#             
-#             cpos_external_embedding_fp = open(options.cpos_external_embedding,'r')
-#             cpos_external_embedding_fp.readline()
-#             self.cpos_external_embedding = {line.split(' ')[0] : [float(f) for f in line.strip().split(' ')[1:]] 
-#                                        for line in cpos_external_embedding_fp}
-#             cpos_external_embedding_fp.close()
-# 
-#             self.cpos_edim = len(self.cpos_external_embedding.values()[0])
-#             self.cpos_noextrn = [0.0 for _ in xrange(self.cpos_edim)]
-#             self.cpos_extrnd = {cpostag: i + self.INIT_POS_INDEX 
-#                                 for i, cpostag in enumerate(self.cpos_external_embedding)}
-#             self.cpos_elookup = self.model.add_lookup_parameters((len(self.cpos_external_embedding) + self.INIT_POS_INDEX, self.cpos_edim))
-#             
-#             for cpostag, i in self.cpos_extrnd.iteritems():
-#                  self.cpos_elookup.init_row(i, self.cpos_external_embedding[cpostag])
-#             self.cpos_extrnd['*PAD*'] = self.INDEX_POS_PAD
-#             self.cpos_extrnd['*INITIAL*'] = self.INDEX_POS_INITIAL
-# 
-#             print 'Load cpostag external embedding. Vector dimensions', self.cpos_edim
+        else:
+            warnings.warn("Not using any external file for POSTAG embeddings")
             
             
+        #INFORMATION FOR THE EXTERNAL FEATS EMBEDDINGS
+        self.feats_external_embedding = None
+        self.feats_edim = None
+        self.feats_noextrn = None
+        self.feats_extrnd = None
+        self.feats_elookup= None
         
-                      
-
-        #dims = self.wdims + self.pdims + (self.edim if self.external_embedding is not None else 0)
+        print options.feats_external_embedding
         
-#         dims = (self.wdims + self.pdims + (self.edim if self.external_embedding is not None else 0) + 
-#                                           (self.cpos_edim if self.cpos_external_embedding is not None else 0))
+        if options.feats_external_embedding is not None and os.path.exists(options.feats_external_embedding):
+            self.feats_external_embedding, self.feats_edim,self.feats_noextrn,self.feats_extrnd, self.feats_elookup = self._assign_external_embeddings(options.feats_external_embedding,
+                                                                                                                                             self.INDEX_FEATS_PAD, self.INDEX_FEATS_INITIAL)
+        else:
+            warnings.warn("Not using any external file for FEATS embeddings")        
         
+            
+            
         dims = (self.wdims + self.pdims + (self.edim if self.external_embedding is not None else 0) + 
                                           (self.cpos_edim if self.cpos_external_embedding is not None else 0) +
-                                          (self.pos_edim if self.pos_external_embedding is not None else 0))
+                                          (self.pos_edim if self.pos_external_embedding is not None else 0)+
+                                          (self.feats_edim if self.feats_external_embedding is not None else 0))
         
         
         print self.ldims
@@ -225,12 +203,15 @@ class CovingtonBILSTM:
         self.hidden2_units = options.hidden2_units
         self.vocab['*PAD*'] = self.INDEX_WORD_PAD
         self.cpos['*PAD*'] = self.INDEX_POS_PAD
+        self.feats['*PAD*'] = self.INDEX_FEATS_PAD
 
         self.vocab['*INITIAL*'] = self.INDEX_WORD_INITIAL
         self.cpos['*INITIAL*'] = self.INDEX_POS_INITIAL
+        self.feats['*INITIAL*'] = self.INDEX_FEATS_INITIAL
 
         self.wlookup = self.model.add_lookup_parameters((len(words) + self.INIT_WORD_INDEX, self.wdims))
         self.plookup = self.model.add_lookup_parameters((len(cpos) + self.INIT_POS_INDEX, self.pdims))
+     #   self.flookup = self.model.add_lookup_parameters((len(feats)+ self.INIT_FEATS_INDEX, self.fdims))
         self.rlookup = self.model.add_lookup_parameters((len(rels), self.rdims))
 
         
@@ -268,11 +249,9 @@ class CovingtonBILSTM:
     def _assign_external_embeddings(self,option_external_embedding,
                                     index_pad,index_initial):
             
-        print option_external_embedding
+
         if option_external_embedding is not None:
-            
-        #    print "Entra _assign_external_embedding aaa"
-                
+ 
             external_embedding_fp = open(option_external_embedding,'r')
             external_embedding_fp.readline()
                 
@@ -293,8 +272,6 @@ class CovingtonBILSTM:
             extrnd['*PAD*'] = index_pad
             extrnd['*INITIAL*'] = index_initial
 
-        #    print 'Load cpostag external embedding. Vector dimensions', edim            
-            
             return external_embedding, edim, noextrn, extrnd, elookup
     
         return None,None,None,None,None
@@ -363,16 +340,16 @@ class CovingtonBILSTM:
         evec = self.elookup[1] if self.external_embedding is not None else None
         cpos_evec = self.cpos_elookup[1] if self.cpos_external_embedding is not None else None
         pos_evec = self.pos_elookup[1] if self.pos_external_embedding is not None else None
+        feats_evec = self.feats_elookup[1] if self.feats_external_embedding is not None else None
 #         print ("pos_evec",pos_evec)
         paddingWordVec = self.wlookup[1]
         paddingPosVec = self.plookup[1] if self.pdims > 0 else None
-        paddingVec = tanh(self.word2lstm.expr() * concatenate(filter(None, [paddingWordVec, paddingPosVec, evec, cpos_evec, pos_evec])) + self.word2lstmbias.expr() )
+        paddingVec = tanh(self.word2lstm.expr() * concatenate(filter(None, [paddingWordVec, paddingPosVec, evec, cpos_evec, pos_evec, feats_evec])) + self.word2lstmbias.expr())
         self.empty = paddingVec if self.nnvecs == 1 else concatenate([paddingVec for _ in xrange(self.nnvecs)])
         #print "Sale Init"
 
     def getWordEmbeddings(self, sentence, train):
         
- #       print [(word.form, word.cpos) for word in sentence], train
         for root in sentence:
             c = float(self.wordsCount.get(root.norm, 0))
             dropFlag =  not train or (random.random() < (c/(0.25+c)))
@@ -382,8 +359,6 @@ class CovingtonBILSTM:
 
             #For word embeddings
             if self.external_embedding is not None:
-                #if not dropFlag and random.random() < 0.5:
-                #    root.evec = self.elookup[0]
                 if root.form in self.external_embedding:
                     root.evec = self.elookup[self.extrnd[root.form]]
                 elif root.norm in self.external_embedding:
@@ -391,6 +366,7 @@ class CovingtonBILSTM:
                 else:
                     root.evec = self.elookup[0]
             else:
+                #TODO use Facebook bin embeddings
                 root.evec = None
 
             #For cpostag embeddings
@@ -411,11 +387,17 @@ class CovingtonBILSTM:
             else:
                 root.posevec = None
 #             
-
-            #root.ivec = concatenate(filter(None, [root.wordvec, root.cposvec, root.evec, root.cposevec]))
-            root.ivec = concatenate(filter(None, [root.wordvec, root.cposvec, root.evec, root.cposevec, root.posevec]))
+            #For feats embeddings
+            if self.feats_external_embedding is not None:
+                if root.feats in self.feats_external_embedding:
+                    root.featsevec = self.feats_elookup[self.feats_extrnd[root.feats]]
+                else:
+                    root.featsevec = self.feats_elookup[0]
+            else:
+                root.featsevec = None
+            
+            root.ivec = concatenate(filter(None, [root.wordvec, root.cposvec, root.evec, root.cposevec, root.posevec, root.featsevec]))
          
-        #print ("root.ivec",root.ivec)
 
         if self.blstmFlag:
             forward  = self.surfaceBuilders[0].initial_state()
