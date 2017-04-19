@@ -4,8 +4,8 @@ Created on 18 Apr 2017
 @author: david.vilares
 
 python remove_largest_sentences_from_treebank.py \
---input /data/david.vilares/ud-treebanks-conll2017 \
---output /data/david.vilares/ud-treebanks-conll2017-<200 \
+--input /data/david.vilares/ud-treebanks-conll2017-D-pPOS \
+--output /data/david.vilares/ud-treebanks-conll2017-D-pPOS-l200 \
 --threshold 200
 '''
 from argparse import ArgumentParser
@@ -44,7 +44,7 @@ if __name__ == '__main__':
             
             with codecs.open(path_dest_treebank+os.sep+path_train_conll_treebank[0][1],"w") as f_train_out:
                 for s in sentences:
-                    if len(s) <= args.threshold:
+                    if len(s) <= args.threshold+2: #In case there are comments
                         f_train_out.write('\n'.join(s))
                         f_train_out.write("\n\n")
                 
