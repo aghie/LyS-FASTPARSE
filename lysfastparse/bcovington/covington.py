@@ -1,14 +1,35 @@
 from dynet import *
-from utils_bcovington import ParseForest, read_conll, write_conll, CovingtonConfiguration
+from utils_bcovington import read_conll, write_conll, CovingtonConfiguration
 from operator import itemgetter
 from itertools import chain
-from geopy.units import arcsec
 from tarjan import tarjan
-import utils, time, random
+import time, random
 import numpy as np
-import copy
 import os
 import warnings
+
+
+"""
+This is a module extended from original transition-based BIST-Parser:
+
+https://github.com/elikip/bist-parser/blob/master/barchybrid/
+Kiperwasser, E., & Goldberg, Y. (2016). Simple and accurate dependency parsing using bidirectional LSTM feature representations. arXiv preprint arXiv:1603.04351.
+
+
+that has been adapted to include to support non-projective transition-based dependency parsing
+using an implementation (O(n^2)) of the traditional Covington's (2001) algorithm, according
+to the list-based transition-based described in Nivre (2008).
+
+Covington, M. A. (2001). A fundamental algorithm for dependency parsing. In Proceedings of the 39th annual ACM southeast conference (pp. 95-102).
+Nivre, J. (2008). Algorithms for deterministic incremental dependency parsing. Computational Linguistics, 34(4), 513-553.
+
+We also include the O(n) dynamic oracle described in Gomez-Rodriguez and Fernandez-Gonzalez (2015).
+TODO: Current implementation is O(n^2)
+
+Gomez-Rodriguez, C., & Fernandez-Gonzalez, D. (2015). An efficient dynamic oracle for unrestricted non-projective parsing. Volume 2: Short Papers, 256.
+
+"""
+
 
 
 class CovingtonBILSTM:
@@ -48,11 +69,10 @@ class CovingtonBILSTM:
     #OTHER HYPERPARAMETERS
     SIZE_TRANSITIONS = len(TRANSITIONS)
     
-    def __init__(self, words, lemmas, cpos, pos, feats, rels, w2i, l2i, options):
+    def __init__(self, words, lemmas, cpos, pos, feats, rels, w2i, l2i, options, path_oov_external_embedding=None,
+                 pretrained=False):
         
-        sys.stdout.flush()
         self.model = Model()
-        sys.stdout.flush()
         if options.optimizer == self.ADAM:
             self.trainer = AdamTrainer(self.model)
         elif options.optimizer == self.SGD:
@@ -82,32 +102,16 @@ class CovingtonBILSTM:
         self.wdims = options.wembedding_dims 
         self.pdims = options.pembedding_dims 
         self.rdims = options.rembedding_dims 
-      #  self.fdims = options.fembedding_dims
         self.layers = options.lstm_layers
         self.wordsCount = words
         
-        print self.wdims
-        print self.pdims
-        print self.rdims
-      #  print "self.fdims",self.fdims
-
         self.vocab = {word: ind+self.INIT_WORD_INDEX for word, ind in w2i.iteritems()} 
+        self.lemmas = {lemma: ind+self.INIT_WORD_INDEX for lemma,ind in l2i.iteritems()}
         self.cpos = {cpos: ind+self.INIT_POS_INDEX for ind, cpos in enumerate(cpos)}
         self.pos = {pos: ind+self.INIT_POS_INDEX for ind, pos in enumerate(pos)}
-        
-        #TODO : Do we need special indexes for feats too
         self.feats = {f: ind+self.INIT_FEATS_INDEX for ind, f in enumerate(feats)}
-        
-        
-        
         self.rels = {word: ind for ind, word in enumerate(rels)}
         
-        print "cpos", cpos
-        print "pos", pos
-        print "self.cpos", self.cpos
-        print "self.pos", self.pos
-        print "self.feats", self.feats
-
         #List of dependency types
         self.irels = rels 
 
@@ -120,6 +124,8 @@ class CovingtonBILSTM:
         self.kl2_l = options.window_l2l
 
         self.nnvecs = (1 if self.headFlag else 0) + (2 if self.rlFlag or self.rlMostFlag else 0)
+        
+        #Reading external embedding files, if they exists
 
         #INFORMATION FOR EXTERNAL WORD EMBEDDINGS
         self.external_embedding = None
@@ -144,6 +150,7 @@ class CovingtonBILSTM:
                                                                                                                                              self.INDEX_POS_PAD, self.INDEX_POS_INITIAL)
         else:
             warnings.warn("Not using any external file for CPOSTAG embeddings")
+            
         #INFORMATION FOR THE EXTERNAL POSTAG EMBEDDINGS
         self.pos_external_embedding = None
         self.pos_edim = None
@@ -156,33 +163,59 @@ class CovingtonBILSTM:
         else:
             warnings.warn("Not using any external file for POSTAG embeddings")
             
-            
         #INFORMATION FOR THE EXTERNAL FEATS EMBEDDINGS
         self.feats_external_embedding = None
         self.feats_edim = None
         self.feats_noextrn = None
         self.feats_extrnd = None
         self.feats_elookup= None
-        
-        print options.feats_external_embedding
-        
+              
         if options.feats_external_embedding is not None and os.path.exists(options.feats_external_embedding):
-            self.feats_external_embedding, self.feats_edim,self.feats_noextrn,self.feats_extrnd, self.feats_elookup = self._assign_external_embeddings(options.feats_external_embedding,
-                                                                                                                                             self.INDEX_FEATS_PAD, self.INDEX_FEATS_INITIAL)
+            self.feats_external_embedding, self.feats_edim,self.feats_noextrn,self.feats_extrnd, self.feats_elookup = self._assign_external_embeddings(options.feats_external_embedding,                                                                                                                        self.INDEX_FEATS_PAD, self.INDEX_FEATS_INITIAL)
         else:
             warnings.warn("Not using any external file for FEATS embeddings")        
         
+        
+        #INFORMATION FOR THE EXTERNAL FEATS EMBEDDINGS
+#         self.lemmas_external_embedding = None
+#         self.lemmas_edim = None
+#         self.lemmas_noextrn = None
+#         self.lemmas_extrnd = None
+#         self.lemmas_elookup= None
+              
+#         if options.lemmas_external_embedding is not None and os.path.exists(options.lemmas_external_embedding):
+#             self.lemmas_external_embedding, self.lemmas_edim,self.lemmas_noextrn,self.lemmas_extrnd, self.lemmas_elookup = self._assign_external_embeddings(options.lemmas_external_embedding,                                                                                                                        self.INDEX_FEATS_PAD, self.INDEX_FEATS_INITIAL)
+#         else:
+#             warnings.warn("Not using any external file for LEMMAS embeddings")        
+        
+        
+        
+        
+        self.oov_external_embedding = None
+        self.oov_edim = None
+        self.oov_noextrn = None
+        self.oov_extrnd = None
+        self.oov_elookup = None
+        
+        
+        if path_oov_external_embedding is not None and os.path.exists(options.feats_external_embedding):
+                        self.oov_external_embedding, self.oov_edim,self.oov_noextrn,self.oov_extrnd, self.oov_elookup = self._assign_external_embeddings(path_oov_external_embedding,
+                                                                                                                    self.INDEX_WORD_PAD, self.INDEX_WORD_INITIAL) 
+
+        if self.oov_external_embedding is not None and self.oov_edim != self.edim:
+            raise ValueError("The dimensions of the embeddings for OOV words is not equal to the dimension of the rest of external word embeddings (self.oov_edim != self.edim)")
             
-            
+        #Obtaining the dimension of the input
         dims = (self.wdims + self.pdims + (self.edim if self.external_embedding is not None else 0) + 
                                           (self.cpos_edim if self.cpos_external_embedding is not None else 0) +
                                           (self.pos_edim if self.pos_external_embedding is not None else 0)+
-                                          (self.feats_edim if self.feats_external_embedding is not None else 0))
+                                          (self.feats_edim if self.feats_external_embedding is not None else 0)
+#                                           +
+#                                           (self.lemmas_edim if self.lemmas_external_embedding is not None else 0)
+                                          )
         
         
-        print self.ldims
-        print self.ldims*0.5
-        print ("dims",dims)
+        #Initialization of the architecture
         
         self.blstmFlag = options.blstmFlag
         self.bibiFlag = options.bibiFlag
@@ -211,20 +244,14 @@ class CovingtonBILSTM:
 
         self.wlookup = self.model.add_lookup_parameters((len(words) + self.INIT_WORD_INDEX, self.wdims))
         self.plookup = self.model.add_lookup_parameters((len(cpos) + self.INIT_POS_INDEX, self.pdims))
-     #   self.flookup = self.model.add_lookup_parameters((len(feats)+ self.INIT_FEATS_INDEX, self.fdims))
         self.rlookup = self.model.add_lookup_parameters((len(rels), self.rdims))
 
-        
-        #self.word2lstm = self.model.add_parameters((self.ldims, self.wdims + self.pdims + (self.edim if self.external_embedding is not None else 0)))
-        print ("self.word2lstm (self.ldims, dims)", (self.ldims, dims) )
         
         self.word2lstm = self.model.add_parameters((self.ldims, dims))
         
         self.word2lstmbias = self.model.add_parameters((self.ldims))
         self.lstm2lstm = self.model.add_parameters((self.ldims, self.ldims * self.nnvecs + self.rdims))
         self.lstm2lstmbias = self.model.add_parameters((self.ldims))
-        
-        print ("self.hidlayer",(self.hidden_units, self.ldims * self.nnvecs * (self.kl1 + self.kl2_l + self.kl2_r  + self.kb)))
 
         self.hidLayer = self.model.add_parameters((self.hidden_units, self.ldims * self.nnvecs * (self.kl1 + self.kl2_l + self.kl2_r  + self.kb)))
         self.hidBias = self.model.add_parameters((self.hidden_units))
@@ -244,10 +271,20 @@ class CovingtonBILSTM:
         self.routLayer = self.model.add_parameters((2 * (len(self.irels) + 0) + 1, self.hidden2_units if self.hidden2_units > 0 else self.hidden_units))
         self.routBias = self.model.add_parameters((2 * (len(self.irels) + 0) + 1))
 
+        self.pretrained = pretrained
 
 
     def _assign_external_embeddings(self,option_external_embedding,
                                     index_pad,index_initial):
+        """
+        Reads an external embedding file
+        Returns:
+        external_embedding: A dictionary of key:embedding
+        edim: Dimension of the embedding
+        noextrn: ??
+        extrnd: Index for each key
+        elookup: Parameter lookup 
+        """
             
 
         if option_external_embedding is not None:
@@ -257,9 +294,9 @@ class CovingtonBILSTM:
                 
             external_embedding = {line.split(' ')[0] : [float(f) for f in line.strip().split(' ')[1:]] 
                                            for line in external_embedding_fp}
+            
+            
             external_embedding_fp.close()
-    
-    
     
             edim = len(external_embedding.values()[0])
             noextrn = [0.0 for _ in xrange(edim)]
@@ -279,11 +316,17 @@ class CovingtonBILSTM:
 
 
     def __evaluate(self, c, train):
+        """
+        @param c: A CovingtonConfiguration instance
+        @param train: True if used in the training phase, False otherwise
+        Returns the scores for all possible transitions (training)
+        or the top ones (testing) for a given configuration c
+        """
               
+        #Gets the embeddings for the terms to be used in the prediction
         top_l1  = [c.sentence[c.l1-i].lstms if c.l1 - i > 0 else [self.empty] for i in xrange(self.kl1)]
         top_l2l = [c.sentence[c.l1+1+i].lstms if c.l1+1+i < c.b  else [self.empty] for i in xrange(self.kl2_l)]
         top_l2r = [c.sentence[c.b-i].lstms if c.b-i > c.l1 else [self.empty] for i in xrange(self.kl2_r)]
-      #  print [c.b+i-1 if c.b+i-1 <= c.sentence[-1].id else -50 for i in xrange(self.kb)]
         topBuffer = [c.sentence[c.b+i-1].lstms if c.b+i-1 <= c.sentence[-1].id else [self.empty] for i in xrange(self.kb)]
 
         input = concatenate(list(chain(*(top_l1 + top_l2l + top_l2r + topBuffer))))
@@ -315,8 +358,8 @@ class CovingtonBILSTM:
                             
         else:
             #It is done different from the 'train' phase, due to the dynamic oracle.
-            #In the test phase we already pick the most likely transition/dependency 
-            #In Covington we have to select the best valid
+            #In the test phase we already pick the most likely transition/dependency instead of returning them all
+            #and then selecting one according to the prediction of the dynamic oracle
             sLEFT,rLEFT = max(zip(scrs[1::2],self.irels))
             sRIGHT,rRIGHT = max(zip(scrs[2::2],self.irels))
             sLEFT += uscrs[self.LEFT_ARC]
@@ -337,18 +380,23 @@ class CovingtonBILSTM:
         self.model.load(filename)
 
     def Init(self):
-        evec = self.elookup[1] if self.external_embedding is not None else None
+        evec = self.elookup[1] if self.external_embedding is not None  else None
         cpos_evec = self.cpos_elookup[1] if self.cpos_external_embedding is not None else None
         pos_evec = self.pos_elookup[1] if self.pos_external_embedding is not None else None
         feats_evec = self.feats_elookup[1] if self.feats_external_embedding is not None else None
-#         print ("pos_evec",pos_evec)
+      #  lemmas_evec = self.lemmas_elookup[1] if self.lemmas_external_embedding is not None else None
         paddingWordVec = self.wlookup[1]
         paddingPosVec = self.plookup[1] if self.pdims > 0 else None
+      #  paddingVec = tanh(self.word2lstm.expr() * concatenate(filter(None, [paddingWordVec, paddingPosVec, evec, cpos_evec, pos_evec, feats_evec, lemmas_evec])) + self.word2lstmbias.expr())
         paddingVec = tanh(self.word2lstm.expr() * concatenate(filter(None, [paddingWordVec, paddingPosVec, evec, cpos_evec, pos_evec, feats_evec])) + self.word2lstmbias.expr())
         self.empty = paddingVec if self.nnvecs == 1 else concatenate([paddingVec for _ in xrange(self.nnvecs)])
-        #print "Sale Init"
+
 
     def getWordEmbeddings(self, sentence, train):
+        """
+        Gets the embeddings (also external) for every term in a sentence
+        Returns a vector of all embeddings concatenated
+        """
         
         for root in sentence:
             c = float(self.wordsCount.get(root.norm, 0))
@@ -364,9 +412,11 @@ class CovingtonBILSTM:
                 elif root.norm in self.external_embedding:
                     root.evec = self.elookup[self.extrnd[root.norm]]
                 else:
-                    root.evec = self.elookup[0]
+                    if (self.oov_external_embedding is not None and root.form.replace(" ","_") in self.oov_external_embedding):
+                        root.evec = self.oov_elookup[self.oov_extrnd[root.form.replace(" ","_")]]
+                    else:
+                        root.evec = self.elookup[0]
             else:
-                #TODO use Facebook bin embeddings
                 root.evec = None
 
             #For cpostag embeddings
@@ -396,9 +446,20 @@ class CovingtonBILSTM:
             else:
                 root.featsevec = None
             
+            
+            #For lemmas embeddings
+#             if self.lemmas_external_embedding is not None:
+#                 if root.lemma in self.lemmas_external_embedding:
+#                     root.lemmasevec = self.lemmas_elookup[self.lemmas_extrnd[root.lemma]]
+#                 else:
+#                     root.lemmasevec = self.lemmas_elookup[0]
+#             else:
+#                 root.lemmasevec = None            
+            
+            
+         #   root.ivec = concatenate(filter(None, [root.wordvec, root.cposvec, root.evec, root.cposevec, root.posevec, root.featsevec, root.lemmasevec]))
             root.ivec = concatenate(filter(None, [root.wordvec, root.cposvec, root.evec, root.cposevec, root.posevec, root.featsevec]))
-         
-
+            
         if self.blstmFlag:
             forward  = self.surfaceBuilders[0].initial_state()
             backward = self.surfaceBuilders[1].initial_state()
@@ -430,17 +491,19 @@ class CovingtonBILSTM:
 
 
     def Predict(self, conll_path):
+        """
+        Makes non-projective depending parsing prediction given a ConLL-X file
+        """
+    
         
-     #   print ("Entra predict")
         with open(conll_path, 'r') as conllFP:
-            for iSentence, sentence in enumerate(read_conll(conllFP, False)):
+            for iSentence, sentence in enumerate(read_conll(conllFP)):
                 self.Init()
 
                 l1 = sentence[0].id
                 b = sentence[1].id
                 arcs = set([])   
                 
-
                 self.getWordEmbeddings(sentence, False)
 
                 for root in sentence:
@@ -471,7 +534,7 @@ class CovingtonBILSTM:
                         
                     elif best[1] == self.RIGHT_ARC:
                         
-                        sentence[b].pred_parent_id = sentence[l1].id # l1 should be the same as sentence[l1].id
+                        sentence[b].pred_parent_id = sentence[l1].id
                         sentence[b].pred_relation = best[0]
 
                         best_op = self.RIGHT_ARC
@@ -497,6 +560,9 @@ class CovingtonBILSTM:
 
 
     def Train(self, conll_path):
+        """
+        Trains a O(n^2) Covington's parser with a O(n^2) dynamic oracle
+        """
         mloss = 0.0
         errors = 0
         batch = 0
@@ -512,7 +578,7 @@ class CovingtonBILSTM:
         start = time.time()
 
         with open(conll_path, 'r') as conllFP:
-            shuffledData = list(read_conll(conllFP, True))
+            shuffledData = list(read_conll(conllFP))
             
             random.shuffle(shuffledData)
 
@@ -522,17 +588,9 @@ class CovingtonBILSTM:
 
             self.Init()
 
-            for iSentence, sentence in enumerate(shuffledData):
-            #    print iSentence, len(sentence), sentence[0], type(sentence[0]), sentence[0].id, sentence[0].form,sentence[0].parent_id,sentence[0].relation
-            #    print iSentence, len(sentence), sentence[1], type(sentence[1]), sentence[1].id, sentence[1].form,sentence[1].parent_id,sentence[1].relation
-            #    start_sentence_time = time.time()
-                
-             #   print "iSentence",iSentence, [(word.id,word.form) for word in sentence],
-                
+            for iSentence, sentence in enumerate(shuffledData):    
                 if iSentence % 100 == 0 and iSentence != 0:
                     print 'Processing sentence number:', iSentence, 'Loss:', eloss / etotal, 'Errors:', (float(eerrors)) / etotal, 'Labeled Errors:', (float(lerrors) / etotal) , 'Time', time.time()-start                  
-#                     print 'Predicted arcs', arcs
-#                     print 'Gold arcs', gold_arcs       
                     start = time.time()
                     eerrors = 0
                     eloss = 0.0
@@ -540,16 +598,11 @@ class CovingtonBILSTM:
                     lerrors = 0
                     ltotal = 0
 
-
-      #          print "entra self.getWordEmbeddings"
-      #          sys.stdout.flush()
                 self.getWordEmbeddings(sentence, True)
-      #          print "sale self.getWordEmbeddings"
                 #We obtain the gold arcs to then compute the dynamic oracle for covington
                 gold_arcs = set([])
                 for word in sentence:
-#                     if iSentence == 104:
-#                         print word.id, word.form, word.parent_id, gold_arcs
+                    
                     #TODO: Weird error if not, adds and arc (0,0)
                     if word.id != word.parent_id:
                         gold_arcs.add((word.parent_id,word.id))
@@ -557,12 +610,7 @@ class CovingtonBILSTM:
                 
                 l1 = sentence[0].id
                 b = sentence[1].id
-                arcs = set([])
-                
-#                 if iSentence == 104:
-#                     print gold_arcs
-                
-
+                arcs = set([])               
                 c = CovingtonConfiguration(l1,b,sentence,arcs)
                 loss_c = self._loss(c,gold_arcs, iSentence)
             
@@ -570,17 +618,14 @@ class CovingtonBILSTM:
                     word.lstms = [word.vec for _ in xrange(self.nnvecs)]
 
                 hoffset = 1 if self.headFlag else 0
-   #             print ("l1 before starting",sentence[l1].id, sentence[l1].form, sentence[l1].parent_id, sentence[l1].relation)
-   #             print ("b before starting",sentence[b].id, sentence[b].form, sentence[b].parent_id, sentence[b].relation)
+
                 while not self._is_final_state(b,sentence):
 
                     costs = [None,None,None,None]
                     transition_scores = self.__evaluate(c, True)
-#                     print ("Gold arcs", gold_arcs)
-               #     print ("transition_scores",transition_scores)
-               #     raw_input()
-#                     print ("costs",costs)
-                    for t,_ in enumerate(transition_scores):
+
+                    #We determine if the transitions are valid for a given configuration c
+                    for t in self.TRANSITIONS:
                         
                         l1_aux = l1
                         b_aux = b
@@ -612,47 +657,21 @@ class CovingtonBILSTM:
                             loss_new_c = self._loss(new_c,gold_arcs,iSentence)
                                                
                             cost = loss_new_c - loss_c
-#                             if iSentence == 104:
-#                                 print "*******************************"+str(iSentence)      
-#                                 print t,"new_c", new_c, "loss_new_c", loss_new_c, "cost", cost
                             costs[t] = float(cost)
-                #            print t, "loss_c", loss_c, "loss_new_c", loss_new_c
 
-#                     print ("updated costs", costs)
-                #    print ("aaa",[s for s in chain(*transition_scores)]) 
-                    #Valid transitions left and right arcs with cost = 0 & shift or no-arc
-#                    print ("list(chain*transitions_scores)",list(chain(*transition_scores)))
-                 
-
+                    #Valid transitions are those with cost 0
+                    #If it is a LEFT/RIGHT arc, also the relation must match with the one in gold standard
                     valid_transitions = [s for s in chain(*transition_scores) if costs[s[1]] == 0 and (s[1] in [self.SHIFT,self.NO_ARC] 
                                                                                                           or ((s[1] == self.LEFT_ARC and s[0] == sentence[l1].relation) 
-                                                                                                              or (s[1] == self.RIGHT_ARC and s[0] == sentence[b].relation)))]
-                    
-                    
-          #          print ("Estimated costs", costs)
-      #              print ("valid_transitions", valid_transitions)
+                                                                                                          or (s[1] == self.RIGHT_ARC and s[0] == sentence[b].relation)))]
 
-                #    print valid_transitions
-#                     if valid_transitions == []:
-#                         print [word.form for word in sentence]
-#                         print "valid_transitions",valid_transitions
-#                         print "transition_scores",transition_scores
-#                         print "c", c
-#                         print "costs", costs
-#                         print "len(sentence)", len(sentence)
                     best_valid = max(valid_transitions, key=itemgetter(2))
-                       
-                    
-     #               print ("best_valid", best_valid)
-
 
                     wrong_transitions = [s for s in chain(*transition_scores) if costs[s[1]] is not None and ( (costs[s[1]] != 0) or (s[1] in [self.LEFT_ARC,self.RIGHT_ARC] 
                                                                                                           and ((s[1] == self.LEFT_ARC and s[0] != sentence[l1].relation) 
                                                                                                               or (s[1] == self.RIGHT_ARC and s[0] != sentence[b].relation))) ) ]
                     
-       #             print ("wrong transitions", wrong_transitions)                     
-
-#                    best = best_valid
+                    #Aggressive exploration as done by Kiperwasser and Golberg (2016)
                     if wrong_transitions != []:
                         best_wrong = max(wrong_transitions, key=itemgetter(2))    
 
@@ -661,9 +680,8 @@ class CovingtonBILSTM:
                     else:
                         best = best_valid 
 
-            #        print ("best", best)
-#                     print ("best", best)
 
+                    #Moving a new configuration based on the "best" choice
                     if best[1] == self.LEFT_ARC:
                                       
                         sentence[l1].pred_parent_id = sentence[b].id
@@ -724,10 +742,8 @@ class CovingtonBILSTM:
                     c = CovingtonConfiguration(l1,b,sentence,arcs)
                     loss_c = self._loss(c,gold_arcs, iSentence)
                  
-              #  print "Entra", iSentence
 
-                if len(errs) > 50: # or True:
-                    #eerrs = ((esum(errs)) * (1.0/(float(len(errs)))))
+                if len(errs) > 50: 
                     eerrs = esum(errs)
                     scalar_loss = eerrs.scalar_value()
                     eerrs.backward()
@@ -737,8 +753,6 @@ class CovingtonBILSTM:
 
                     renew_cg()
                     self.Init()
-                    
-               # print time.time() - start_sentence_time
 
         if len(errs) > 0:
             eerrs = (esum(errs)) # * (1.0/(float(len(errs))))
@@ -755,52 +769,24 @@ class CovingtonBILSTM:
         print "Loss: ", mloss/iSentence
 
 
-
-
     def _is_final_state(self,b,sentence):
-        # while len(buf) > 0 or len(stack) > 1 :
         return b >= len(sentence)
 
-    def _is_valid_left_arc(self,c):
 
+    def _is_valid_left_arc(self,c):
+        
         aux = set(c.A)
         aux.add((c.b,c.l1))
-
-        l1_has_head = self._y_has_head(c.A, c.b, c.l1)
-#         
-#         print ("_is_valid_left_arc l1", c.l1)
-#         print ("_is_valid_left_arc l1_has_head", l1_has_head)
-#         print ("_is_valid_left_arc l1>0", c.l1>0)
-#         print ("self._count_cycles(aux)", self._count_cycles(aux), self._count_cycles(aux) == 0)
-        
+        l1_has_head = self._y_has_head(c.A, c.b, c.l1) 
         return (c.l1 > 0 and not l1_has_head
                 and self._count_cycles(aux) == 0)
+
 
     def _is_valid_right_arc(self,c):
         
         b_has_head = self._y_has_head(c.A, c.l1, c.b)
-        
-        
-#         print ("is_valid_right_arc",l1,b, sentence[l1],sentence[b])
-#         print ("c.A", c.A)
         aux = set(c.A)
         aux.add((c.l1,c.b))
-        
-#         print ("_is_valid_right_arc l1,b", l1,b)
-#         print ("_is_valid_right_arc b_has_head", b_has_head)
-#         print ("self._count_cycles(aux) == 0",self._count_cycles(aux),self._count_cycles(aux) == 0)
-        
-#         print ("sentence[b]",sentence[b].parent_id, sentence[b].pred_parent_id)
-#         print ("sentence[l1]",sentence[l1].parent_id, sentence[l1].pred_parent_id)
-        
-        
-
-
-#         print ("_is_valid_right_arc l1", l1)
-#         print ("_is_valid_right_arc l1_has_head", b_has_head)
-#         print ("self._count_cycles(aux)", self._count_cycles(aux), self._count_cycles(aux) == 0)
-
-
         return ((not b_has_head) and self._count_cycles(aux) == 0)
         
         
@@ -811,7 +797,6 @@ class CovingtonBILSTM:
     """
     def _loss(self, c, gold_arcs, iSentence):
         
-     #   print ("State in loss",str(c))
         U = set([]) #set of unreachable nodes
         non_built_arcs = gold_arcs.difference(c.A)
         
@@ -824,19 +809,14 @@ class CovingtonBILSTM:
             right = max(x,y) #O(n)
             if (j > right or (j==right and i < left) or self._y_has_head(c.A,x,y)
                 or self._weakly_connected(c.A, x, y,c, gold_arcs)):
-#                 if iSentence == 104:
-#                     print i,j,"|",x,y, j > right,(j==right and i < left), self._y_has_head(c.A,x,y),self._weakly_connected(c.A, x, y,c, gold_arcs)
                 U.add((x,y))
         
         I = gold_arcs.difference(U)
 
-#         if iSentence == 104:
-#             print len(U), self._count_cycles( c.A.union(I)) #, non_built_arcs, gold_arcs
-
         return len(U) + self._count_cycles( c.A.union(I))
     
     
-    #TODO: This can be done much better
+    #TODO: This can be done more efficient
     #O(n^2)
     def _weakly_connected(self,A,x,y,c, gold_arcs):
         
@@ -860,6 +840,7 @@ class CovingtonBILSTM:
                     
         return weakly_connected
     
+    
     """
     Tarjan (1972) implementation at https://github.com/bwesterb/py-tarjan/
     O(n)
@@ -874,10 +855,11 @@ class CovingtonBILSTM:
                 d[a].append(b)
                    
         return sum([1 for e in tarjan(d) if len(e) > 1])
-        
-
     
     
+    """
+    Determines if node y has already a head
+    """
     #O(n)
     def _y_has_head(self,A,x,y):
         
@@ -886,3 +868,8 @@ class CovingtonBILSTM:
                 return True
         return False
      
+    #O(n)
+#     def violates_single_root(self, A):
+#         print A,[1 for (h,d) in A if h==0], len([1 for (h,d) in A if h==0]) != 0 
+#         return len([1 for (h,d) in A if h==0]) != 0 
+    

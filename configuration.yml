@@ -1,3 +1,4 @@
 udpipe: /opt/udpipe-1.1.0-bin/bin-linux64/udpipe
-conll17_eval: /data/david.vilares/UDpipe/udpipe-ud-2.0-conll17-170315/conll17_ud_eval.py
-udpipe_models: /data/david.vilares/UDpipe/udpipe-ud-2.0-conll17-170315/models/
+conll17_eval: /home/david.vilares/data/david.vilares/UDpipe/udpipe-ud-2.0-conll17-170315/conll17_ud_eval.py
+udpipe_models: /home/david.vilares/data/david.vilares/UDpipe/udpipe-ud-2.0-conll17-170315/models/
+fasttext: /home/david.vilares/git/fastText/fasttext
