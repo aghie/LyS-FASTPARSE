@@ -1,6 +1,6 @@
 # LyS-FASTPARSE at CoNLL2017 shared task on end-to-end dependency parsing
 
-## A parser for fully non-projective dependency parser based on the BIST-parsers
+## A BIST-parser for non-projective transition-based dependency parsing
 
 A BI-LSTM implementation of a transition-based Covington's algorithm with dynamic oracle for unrestricted dependency parsing.
 
