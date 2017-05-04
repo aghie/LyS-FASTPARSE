@@ -18,7 +18,7 @@ Python 2.7 interpreter
 [tarjan](https://pypi.python.org/pypi/tarjan/)
 
 
-If you want to run our released pretrained models, make sure your BOOST version is 1.54. There is currently a dependency between the saved models and the version of BOOST that Dynet uses, so you might not be able to load the trained model if this is different.
+If you want to run our released pretrained models, make sure your BOOST version is 1.54. There is currently a dependency between the saved models and the version of BOOST that Dynet uses, so you might not be able to load the trained models if such version is different.
 
 ## Usage
 
@@ -53,17 +53,21 @@ To run a trained model:
 
 TBA
 
-
-
-##Citation
+To execute the trained models using the official CoNLL/TIRA data directory use:
 
 TBA
 
-##License
+
+
+## Citation
+
+TBA
+
+## License
 
 This software is released under the terms of the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
 
-##References
+## References
 
 Kiperwasser, E., & Goldberg, Y. (2016). Simple and accurate dependency parsing using bidirectional LSTM feature representations. arXiv preprint arXiv:1603.04351.
 
