@@ -38,6 +38,8 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     
+    print "args", args
+    
     config = yaml.safe_load(open(args.conf))
     
     with open(args.c+os.sep+"metadata.json") as data_file:    

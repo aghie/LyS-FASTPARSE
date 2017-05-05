@@ -17,8 +17,9 @@ Python 2.7 interpreter
 
 [tarjan](https://pypi.python.org/pypi/tarjan/)
 
+pyyaml
 
-If you want to run our released pretrained models, make sure your BOOST version is 1.54. There is currently a dependency between the saved models and the version of BOOST that Dynet uses, so you might not be able to load the trained models if such version is different.
+If you want to run our released pretrained models, make sure you have installed Boost-1.54.0 and that Dynet picks up such version when installing it. There is currently a dependency between the saved models and the version of BOOST that Dynet uses, so you might not be able to load the trained models if such version is different.
 
 ## Usage
 
