@@ -19,9 +19,12 @@ parser.add_argument("-m", dest="m",metavar="FILE")
 parser.add_argument("-o", dest="o",metavar="FILE")
 parser.add_argument("-epe", dest="epe",metavar="FILE")
 parser.add_argument("-efe",dest="efe",metavar="FILE")
+parser.add_argument("-ewe",dest="ewe", metavar="FILE")
 parser.add_argument("-r", dest="r",help="Input run [raw|conllu]", type=str)
 parser.add_argument("-i", dest="i",metavar="FILE")
 parser.add_argument("--dynet-mem", dest="dynet_mem", help="It is needed to specify this parameter")
+parser.add_argument("--udpipe_bin", dest="udpipe_bin",metavar="FILE")
+parser.add_argument("--udpipe_model", dest="udpipe_model",metavar="FILE")
     
 args = parser.parse_args()
 
@@ -30,6 +33,7 @@ print "args (run_model.py)",args
 path_params = args.p
 path_model = args.m
 path_outfile = args.o
+path_embeddings = args.ewe
 path_pos_embeddings = args.epe
 path_feats_embeddings = args.efe
 type_text = args.r
@@ -49,14 +53,14 @@ if type_text == "conllu" and os.path.exists(path_model):
              
 elif type_text == "raw" and os.path.exists(path_model):
          
-    pipe = lysfastparse.utils.UDPipe(args.udpipe_model, config[YAML_UDPIPE])    
+    pipe = lysfastparse.utils.UDPipe(args.udpipe_model, args.udpipe_bin) #config[YAML_UDPIPE])    
     raw_content = lysfastparse.utils.read_raw_file(path_input)
     conllu = pipe.run(raw_content, options=" --tokenize --tag")
     f_temp = tempfile.NamedTemporaryFile("w", delete=False)
     f_temp.write(conllu)
     f_temp.close()
     valid_content = True
-        
+ 
 
 if valid_content == True:          
 
@@ -67,12 +71,19 @@ if valid_content == True:
                     
                     
     d = vars(stored_opt)
+    
+    print d
                 
-    d["external_embedding"] = None #os.sep.join([args.e,"FB_embeddings","wiki."+metadata[LTCODE]+".vec"])    
+    d["external_embedding"] = None if d["external_embedding"] =="None" else path_embeddings #os.sep.join([args.e,"FB_embeddings","wiki."+metadata[LTCODE]+".vec"])    
     d["pos_external_embedding"] = path_pos_embeddings #os.sep.join([args.e,"UD_POS_embeddings",metadata[NAME_TREEBANK]])
     d["feats_external_embedding"] = path_feats_embeddings #os.sep.join([args.e,"UD_FEATS_embeddings",metadata[NAME_TREEBANK]])
     d["lemmas_external_embedding"] = None
-                
+             
+    
+    print "pos_external_embeddings", d["pos_external_embedding"]
+    print "feats_external_embeddings", d["feats_external_embedding"]  
+    print "external_embedding", d["external_embedding"]
+       
 #     print d
 #     print
     stored_opt =Namespace(**d)
