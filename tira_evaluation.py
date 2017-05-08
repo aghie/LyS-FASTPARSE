@@ -48,7 +48,6 @@ def get_models_dict(path_models):
 
 def select_model(lcode, tcode, dict_models):
     
-    
     try:
         #If we know the lang and treebank code
         return dict_models[lcode][tcode]["model"],dict_models[lcode][tcode]["params"]  
@@ -58,7 +57,10 @@ def select_model(lcode, tcode, dict_models):
             return  dict_models[lcode]["0"]["model"],dict_models[lcode]["0"]["params"]  
         except KeyError:
             #We do not know the lang neither the treebank code
-            return dict_models["en"]["0"]["model"],dict_models["en"]["0"]["params"]
+            if "en" in dict_models:
+                return dict_models["en"]["0"]["model"],dict_models["en"]["0"]["params"]
+            else:
+                return None,None
 
 
 def get_udpipe_models(path_models):
@@ -92,7 +94,7 @@ if __name__ == '__main__':
     parser.add_argument("-e", dest="e", help="Embeddings directory",metavar="FILE")
     parser.add_argument("-um", dest="um",help="UDpipe models direcotry", metavar="FILE")
     parser.add_argument("--dynet-mem", dest="dynet_mem", help="It is needed to specify this parameter")
-    parser.add_argument("--conf", dest="conf")
+    parser.add_argument("-conf", dest="conf")
     
     
     args = parser.parse_args()
@@ -105,18 +107,21 @@ if __name__ == '__main__':
         metadata_datasets = json.load(data_file)
     
     dict_models = get_models_dict(args.m)
-    
-    
+
     for metadata in metadata_datasets:
         
         path_model, path_params = select_model(metadata[LCODE], metadata[TCODE], dict_models)
+        
+        if path_model is None: continue
+        
         path_udpipe_bin = "none"
         path_udpipe_model = "none"
         name_extrn_emb = path_model.rsplit("/",1)[1].split(".")[2]
         
-        print "Processing model located at",path_model
-        print "Processing params located at",path_params
-        print "Using POS and FEATs embeddings from",name_extrn_emb
+        print "Processing file", metadata[PSEGMORFILE]
+        print "Model:",path_model
+        print "Params:",path_params
+        print "POS/FEATS embeddings: ",name_extrn_emb
                  
         path_pos_embeddings = os.sep.join([args.e,"UD_POS_embeddings",name_extrn_emb])
         path_feats_embeddings = os.sep.join([args.e,"UD_FEATS_embeddings",name_extrn_emb])
@@ -146,8 +151,8 @@ if __name__ == '__main__':
                                 "-ewe", path_embeddings,
                                 "-r",args.r, "-i",path_input,
                                 "--dynet-mem", args.dynet_mem,
-                                "--udpipe_bin", path_udpipe_bin,
-                                "--udpipe_model", path_udpipe_model])
+                                "-udpipe_bin", path_udpipe_bin,
+                                "-udpipe_model", path_udpipe_model])
             
             os.system(command)
             

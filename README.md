@@ -49,14 +49,23 @@ The command used to train the Covington parsers is pretty similar to the one of 
 For a description of all available options type:
 
 	python lys_fastparse.py --help 
+	
+## How to run a parser
 
 To run a trained model:
 
-TBA
-
-To execute the trained models using the official CoNLL/TIRA data directory use:
-
-TBA
+	python run_model.py \
+	-p $PATH_PARAMS \
+	-m $PATH_MODEL \ 
+	-o $PATH_OUTPUT
+	-epe $PATH_POS_EMBEDDINGS \
+	-efe $PATH_FEATS_EMMBEDDINGS \
+	-ewe $PATH_EMBEDDINGS \
+    -r [raw|conllu] \
+    -i $PATH_INPUT \
+    --dynet-mem $DYNET_MEM \
+    -udpipe_bin $PAHT_UDPIPE_BIN \
+    -udpipe_model $PATH_UDPIPE_MODEL
 
 
 

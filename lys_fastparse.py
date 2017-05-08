@@ -34,22 +34,18 @@ if __name__ == '__main__':
     parser.add_argument("--input", dest="input", help="Path to the input file",default=None)
     parser.add_argument("--input_type", dest="input_type",help="Style of the input file [raw|conllu] (only use with --predict)")
     parser.add_argument("--pipe", dest="pipe",default="UDpipe",help="Framework used to do the pipeline. Only \"UDpipe\" supported (only use with --predict)")
-    
     parser.add_argument("--train", dest="conll_train", help="Annotated CONLL train file", metavar="FILE", default="../data/PTB_SD_3_3_0/train.conll")
     parser.add_argument("--dev", dest="conll_dev", help="Annotated CONLL dev file", metavar="FILE", default="../data/PTB_SD_3_3_0/dev.conll")
     parser.add_argument("--test", dest="conll_test", help="Annotated CONLL test file", metavar="FILE", default="../data/PTB_SD_3_3_0/test.conll")
     parser.add_argument("--params", dest="params", help="Parameters file", metavar="FILE", default="params.pickle")
     parser.add_argument("--extrn", dest="external_embedding", help="External embeddings", metavar="FILE")
-#    parser.add_argument("--extrn_FBbin", dest="external_embedding_FBbin", default=None, help="Path to binary file of embeddings released by Facebook",metavar="FILE")
     parser.add_argument("--extrn_cpos", dest="cpos_external_embedding",help="CPoStag external embeddings", metavar="FILE")
     parser.add_argument("--extrn_pos", dest="pos_external_embedding", help= "PoStag external embeddings", metavar="FILE")
     parser.add_argument("--extrn_feats", dest="feats_external_embedding", help="Feats external embeddings", metavar="FILE")
- #   parser.add_argument("--extrn_lemmas", dest="lemmas_external_embedding", help="Lemmas external embeddings", metavar="FILE")
     parser.add_argument("--model", dest="model", help="Load/Save model file", metavar="FILE", default="bcovington.model")
     parser.add_argument("--wembedding", type=int, dest="wembedding_dims", default=100)
     parser.add_argument("--pembedding", type=int, dest="pembedding_dims", default=25)
     parser.add_argument("--rembedding", type=int, dest="rembedding_dims", default=25)
-#     parser.add_argument("--fembedding", type=int, dest="fembedding_dims", default=25)
     parser.add_argument("--epochs", type=int, dest="epochs", default=30)
     parser.add_argument("--hidden", type=int, dest="hidden_units", default=100)
     parser.add_argument("--hidden2", type=int, dest="hidden2_units", default=0)
@@ -70,14 +66,10 @@ if __name__ == '__main__':
     parser.add_argument("--usehead", action="store_true", dest="headFlag", default=False)
     parser.add_argument("--userlmost", action="store_true", dest="rlFlag", default=False)
     parser.add_argument("--userl", action="store_true", dest="rlMostFlag", default=False)
-    parser.add_argument("--predict", action="store_true", dest="predictFlag", default=False)
     parser.add_argument("--dynet-mem", type=int, dest="cnn_mem", default=512)
     parser.add_argument("--udpipe_model", dest="udpipe_model", help="Path to the UDpipe for the given language",metavar="FILE")
-#     parser.add_argument("--lang_code", type=str)
-#     parser.add_argument("--treebank_code", type=str)
 
-    parser.add_argument("--load_existing_model", dest="load_existing_model", action="store_true", default=False)
-    parser.add_argument("--best_las", dest="best_las", type=float,default=None)
+
     
     parser.add_argument("--conf", metavar="FILE", dest="conf",required=True)
 
@@ -184,74 +176,6 @@ if __name__ == '__main__':
                 better_las = las
             
         log_results_file.close()
-        
-    else:
-        print "Predicting... "
-        
-        if args.input == None:
-            raise ValueError("--input must contain a valid path when used --predict")
-        if args.udpipe_model == None:
-            raise ValueError("No UDpipe model specified in --udpipe_model")
-                
-        #Reading a raw file        
-        if INPUT_RAW == args.input_type:
-            
-            #Loaded a pipeline object
-            if args.pipe == PIPELINE_UDPIPE:
-                pipe = lysfastparse.utils.UDPipe(args.udpipe_model, config[YAML_UDPIPE])    
-            
-            raw_content = lysfastparse.utils.read_raw_file(args.input)
-            conllu = pipe.run(raw_content, options=" --tokenize --tag")
-            f_temp = tempfile.NamedTemporaryFile("w", delete=False)
-            f_temp.write(conllu)
-            f_temp.close()
-            
-        #Readind a file already preprocessed
-        elif INPUT_CONLLU == args.input_type:
-            f_temp = tempfile.NamedTemporaryFile("w", delete=False)
-            with codecs.open(args.input) as f_in:
-                f_temp.write(f_in.read())
-                f_temp.close()
-        else:
-            raise NotImplementedError("--input_type "+args.input_type+" not supported")
-        
-        #TEST PHASE
-        with open(args.params, 'r') as paramsfp:
-            aux = pickle.load(paramsfp)
-            words, w2i, lemmas, l2i, cpos , pos, feats, rels, stored_opt = aux
-            
-        
-        stored_opt.external_embedding = args.external_embedding     
-        stored_opt.pos_external_embedding = args.pos_external_embedding
-        stored_opt.cpos_external_embedding = args.pos_external_embedding
-        stored_opt.feats_external_embedding = args.pos_external_embedding
-
-        print stored_opt
-
-        print "Running "+args.model
-        parser = lysfastparse.bcovington.covington.CovingtonBILSTM(words, lemmas, cpos, pos, feats, rels, w2i, l2i, stored_opt,
-                                                                   None)
-        
-        
-        parser.Load(args.model)
-        
-        with codecs.open(f_temp.name) as f_temp:
-            lookup_conll_data = lysfastparse.utils.lookup_conll_extra_data(f_temp)
-        
-        
-        testpath = f_temp.name 
-        ts = time.time()
-        pred = list(parser.Predict(testpath))
-        te = time.time()
-        lysfastparse.bcovington.utils_bcovington.write_conll(testpath, pred)
-        
-        lysfastparse.utils.dump_lookup_extra_into_conll(testpath, lookup_conll_data)
-        lysfastparse.utils.transform_to_single_root(testpath)
-        
-        os.system('python '+config[YAML_CONLL17_EVAL]+' '+args.conll_test + ' '+testpath+ ' > ' + testpath + '.txt_test ')
-        print 'Finished predicting test',te-ts
-        os.unlink(f_temp.name)
-    
-    
+  
 
     
