@@ -25,6 +25,7 @@ parser.add_argument("-i", dest="i",metavar="FILE")
 parser.add_argument("--dynet-mem", dest="dynet_mem", help="It is needed to specify this parameter")
 parser.add_argument("-udpipe_bin", dest="udpipe_bin",metavar="FILE")
 parser.add_argument("-udpipe_model", dest="udpipe_model",metavar="FILE")
+
     
 args = parser.parse_args()
 
@@ -60,8 +61,10 @@ elif type_text == "raw" and os.path.exists(path_model):
     f_temp.write(conllu)
     f_temp.close()
     valid_content = True
+
 else:
     raise NotImplementedError
+
  
 
 if valid_content == True:          
@@ -72,7 +75,7 @@ if valid_content == True:
         words, w2i, lemmas, l2i, cpos , pos, feats, rels, stored_opt = aux                 
                     
     d = vars(stored_opt)
-    
+
     d["external_embedding"] = None if d["external_embedding"] =="None" else path_embeddings #os.sep.join([args.e,"FB_embeddings","wiki."+metadata[LTCODE]+".vec"])    
     d["pos_external_embedding"] = None if d["external_embedding"] =="None" else path_pos_embeddings #os.sep.join([args.e,"UD_POS_embeddings",metadata[NAME_TREEBANK]])
     d["feats_external_embedding"] = None if d["external_embedding"] =="None" else path_feats_embeddings #os.sep.join([args.e,"UD_FEATS_embeddings",metadata[NAME_TREEBANK]])
@@ -83,6 +86,7 @@ if valid_content == True:
     print "feats_external_embeddings", d["feats_external_embedding"]  
     print "external_embedding", d["external_embedding"]
        
+
     stored_opt =Namespace(**d)
     print "Running model with this configuration", stored_opt
 

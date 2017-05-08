@@ -4,7 +4,6 @@ import sys
 import os
 import codecs
 import shutil
-import subprocess
 import warnings
 from utils import get_udpipemodel, UDPipe, read_raw_file
 

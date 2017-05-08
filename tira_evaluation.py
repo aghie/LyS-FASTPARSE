@@ -48,6 +48,9 @@ def get_models_dict(path_models):
 
 def select_model(lcode, tcode, dict_models):
     
+    print dict_models
+    print lcode, tcode
+    
     try:
         #If we know the lang and treebank code
         return dict_models[lcode][tcode]["model"],dict_models[lcode][tcode]["params"]  
@@ -111,9 +114,8 @@ if __name__ == '__main__':
     for metadata in metadata_datasets:
         
         path_model, path_params = select_model(metadata[LCODE], metadata[TCODE], dict_models)
-        
         if path_model is None: continue
-        
+
         path_udpipe_bin = "none"
         path_udpipe_model = "none"
         name_extrn_emb = path_model.rsplit("/",1)[1].split(".")[2]
@@ -153,6 +155,7 @@ if __name__ == '__main__':
                                 "--dynet-mem", args.dynet_mem,
                                 "-udpipe_bin", path_udpipe_bin,
                                 "-udpipe_model", path_udpipe_model])
+
             
             os.system(command)
             

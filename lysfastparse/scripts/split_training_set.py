@@ -50,7 +50,7 @@ if __name__ == '__main__':
             f_dev_set_txt = codecs.open(path_dev_set_txt,"w")
             
             with codecs.open(path_train_conll[0][0]) as f_train:
-                sentences = f_train.read().split("\n\n")
+                sentences = f_train.read().strip().split("\n\n")
             
             #We now proceed to overwrite the original training set
             #We also create the corresponding txt file
@@ -58,7 +58,7 @@ if __name__ == '__main__':
             f_train_set_txt =  codecs.open(path_train_conll[0][0].replace(".conllu",".txt"),"w")
             
             for i,s in enumerate(sentences):
-                    
+                if s == [' ']: continue
                 if i % 100 < args.split_to_dev:
                     f_dev_set.write(s+"\n\n")
                 else:

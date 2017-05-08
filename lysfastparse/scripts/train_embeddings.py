@@ -10,9 +10,9 @@ from argparse import ArgumentParser
 Example:
 
 python train_embeddings.py \
---input_conll /data/david.vilares/ud-treebanks-conll2017/ \
---output_dir /data/david.vilares/UD_CPOS_embeddings/ \
---column_to_embed 3 \
+--input_dir /home/david.vilares/data/david.vilares/proofs/ \
+--output_dir /home/david.vilares/data/david.vilares/UD_POS_embeddings/ \
+--column_to_embed 4 \
 --size_embedding 25 \
 --window 5 \
 
