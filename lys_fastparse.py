@@ -82,13 +82,13 @@ if __name__ == '__main__':
     config = yaml.safe_load(open(args.conf))
 
     #PARSING WITH NEURAL COVINGTON
-    if not args.predictFlag:
-        
-        print "Training..."
-        if not (args.rlFlag or args.rlMostFlag or args.headFlag):
-            print 'You must use either --userlmost or --userl or --usehead (you can use multiple)'
-            sys.exit()
-        
+
+    
+    print "Training..."
+    if not (args.rlFlag or args.rlMostFlag or args.headFlag):
+        print 'You must use either --userlmost or --userl or --usehead (you can use multiple)'
+        sys.exit()
+    
 #       TODO: See how to take advantage of OOOV embeddings from fasttetx
 #         if os.path.exists(args.external_embedding_FBbin):
 #         
@@ -96,86 +96,81 @@ if __name__ == '__main__':
 #                                                     args.external_embedding,words)
 #         else:
 #             path_tmp_file_oov = None
-        path_tmp_file_oov = None
-        
-        print args.best_las
-        print args.load_existing_model
+    path_tmp_file_oov = None
     
-        #TODO this is not working
-        if args.load_existing_model:
-            better_las = args.best_las
-            with open(args.output+os.sep+args.params, 'r') as paramsfp:
-                aux = pickle.load(paramsfp)
-                words, w2i, lemmas, l2i, cpos , pos, feats, rels, stored_opt = aux
-                
-                
-                stored_opt.external_embedding = args.external_embedding     
-                stored_opt.pos_external_embedding = args.pos_external_embedding
-                stored_opt.cpos_external_embedding = args.pos_external_embedding
-                stored_opt.feats_external_embedding = args.pos_external_embedding
-                stored_opt.lemmas_external_embedding = args.lemmas_external_embedding
-                
-                print stored_opt
-                
-                parser = lysfastparse.bcovington.covington.CovingtonBILSTM(words, lemmas, cpos, pos, feats, rels, w2i, l2i, stored_opt,
-                                                                   None, args.load_existing_model)
-                parser.Load(args.output+os.sep+args.model)
-                
-        else:
-            
-            print 'Preparing vocab'
-            words, w2i, lemmas, l2i, cpos, pos, feats, rels = lysfastparse.bcovington.utils_bcovington.vocab(args.conll_train)
+# 
+#         with open(args.output+os.sep+args.params, 'r') as paramsfp:
+#             aux = pickle.load(paramsfp)
+#             words, w2i, lemmas, l2i, cpos , pos, feats, rels, stored_opt = aux
+#             
+#             
+#             stored_opt.external_embedding = args.external_embedding     
+#             stored_opt.pos_external_embedding = args.pos_external_embedding
+#             stored_opt.cpos_external_embedding = args.pos_external_embedding
+#             stored_opt.feats_external_embedding = args.pos_external_embedding
+#             stored_opt.lemmas_external_embedding = args.lemmas_external_embedding
+#             
+#             print stored_opt
+#             
+#             parser = lysfastparse.bcovington.covington.CovingtonBILSTM(words, lemmas, cpos, pos, feats, rels, w2i, l2i, stored_opt,
+#                                                                None, args.load_existing_model)
+#             parser.Load(args.output+os.sep+args.model)
+#             
+#     else:
+#         
+    print 'Preparing vocab'
+    words, w2i, lemmas, l2i, cpos, pos, feats, rels = lysfastparse.bcovington.utils_bcovington.vocab(args.conll_train)
 
-            
-            better_las = 0
-            with open(os.path.join(args.output, args.params), 'w') as paramsfp:
-                pickle.dump((words, w2i, lemmas, l2i, cpos, pos, feats, rels, args), paramsfp)
-            print 'Finished collecting vocab'
+    
+    better_las = 0
+    with open(os.path.join(args.output, args.params), 'w') as paramsfp:
+        pickle.dump((words, w2i, lemmas, l2i, cpos, pos, feats, rels, args), paramsfp)
+    print 'Finished collecting vocab'
 
-            print 'Initializing blstm covington:'
-            parser = lysfastparse.bcovington.covington.CovingtonBILSTM(words, lemmas, cpos, pos, feats, rels, w2i, l2i, args, 
-                                               path_tmp_file_oov)
-         
+    print 'Initializing blstm covington:'
+    parser = lysfastparse.bcovington.covington.CovingtonBILSTM(words, lemmas, cpos, pos, feats, rels, w2i, l2i, args, 
+                                       path_tmp_file_oov)
+ 
+
+
+    if path_tmp_file_oov is not None:
+        os.unlink(path_tmp_file_oov)
+    
+    with codecs.open(args.conll_dev) as f_conll_dev:
+        lookup_conll_data = lysfastparse.utils.lookup_conll_extra_data(f_conll_dev)
         
+    log_results_file = codecs.open(os.path.join(args.output.rsplit("/",1)[0], args.output.rsplit("/",1)[1]+'.dev_results'),"a")
+    
+    for epoch in xrange(args.epochs):
+        print 'Starting epoch', epoch
+        parser.Train(args.conll_train)
+        devpath = os.path.join(args.output, 'dev_epoch_' + str(epoch+1) + '.conll')
+        lysfastparse.bcovington.utils_bcovington.write_conll(devpath, parser.Predict(args.conll_dev))
         
-        if path_tmp_file_oov is not None:
-            os.unlink(path_tmp_file_oov)
+        lysfastparse.utils.dump_lookup_extra_into_conll(devpath, lookup_conll_data)
+        lysfastparse.utils.transform_to_single_root(devpath)
         
-        with codecs.open(args.conll_dev) as f_conll_dev:
-            lookup_conll_data = lysfastparse.utils.lookup_conll_extra_data(f_conll_dev)
-            
-        log_results_file = codecs.open(os.path.join(args.output.rsplit("/",1)[0], args.output.rsplit("/",1)[1]+'.dev_results'),"a")
+        print 'Executing conll17_eval'
+        os.system('python '+config[YAML_CONLL17_EVAL]+' '+args.conll_dev + ' '+devpath+ ' > ' + devpath + '.txt ')
         
-        for epoch in xrange(args.epochs):
-            print 'Starting epoch', epoch
-            parser.Train(args.conll_train)
-            devpath = os.path.join(args.output, 'dev_epoch_' + str(epoch+1) + '.conll')
-            lysfastparse.bcovington.utils_bcovington.write_conll(devpath, parser.Predict(args.conll_dev))
-            
-            lysfastparse.utils.dump_lookup_extra_into_conll(devpath, lookup_conll_data)
-            lysfastparse.utils.transform_to_single_root(devpath)
-            
-            print 'Executing conll17_eval'
-            os.system('python '+config[YAML_CONLL17_EVAL]+' '+args.conll_dev + ' '+devpath+ ' > ' + devpath + '.txt ')
-            
-            with codecs.open(devpath+".txt") as f_devpath:
-                content = f_devpath.readlines()
-                las_lines = [l for l in content if
-                             l.startswith("LAS F1 Score")]
-                if len(las_lines) != 1:
-                    warnings.warn("Cannot determine LAS F1 Score from file")
-                else:
-                    las = float(las_lines[0].split(":")[1])
-                log_results_file.write('\t'.join([args.output.rsplit("/",1)[1],str(epoch),"\n".join(content)]))
-            
-            print 'Finished predicting dev'
-            
-            #Only saves the best performing model
-            if las >= better_las:
-                parser.Save(os.path.join(args.output, args.model))
-                better_las = las
-            
-        log_results_file.close()
-  
+        with codecs.open(devpath+".txt") as f_devpath:
+            content = f_devpath.readlines()
+            las_lines = [l for l in content if
+                         l.startswith("LAS F1 Score")]
+            if len(las_lines) != 1:
+                warnings.warn("Cannot determine LAS F1 Score from file")
+            else:
+                las = float(las_lines[0].split(":")[1])
+            log_results_file.write('\t'.join([args.output.rsplit("/",1)[1],str(epoch),"\n".join(content)]))
+        
+        print 'Finished predicting dev'
+        
+        #Only saves the best performing model
+        if las >= better_las:
+            parser.Save(os.path.join(args.output, args.model))
+            better_las = las
+        
+    log_results_file.close()
+
 
     

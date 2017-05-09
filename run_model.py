@@ -76,9 +76,12 @@ if valid_content == True:
                     
     d = vars(stored_opt)
 
+    print "d before",d
+    print
+
     d["external_embedding"] = None if d["external_embedding"] =="None" else path_embeddings #os.sep.join([args.e,"FB_embeddings","wiki."+metadata[LTCODE]+".vec"])    
-    d["pos_external_embedding"] = None if d["external_embedding"] =="None" else path_pos_embeddings #os.sep.join([args.e,"UD_POS_embeddings",metadata[NAME_TREEBANK]])
-    d["feats_external_embedding"] = None if d["external_embedding"] =="None" else path_feats_embeddings #os.sep.join([args.e,"UD_FEATS_embeddings",metadata[NAME_TREEBANK]])
+    d["pos_external_embedding"] = None if d["pos_external_embedding"] =="None" else path_pos_embeddings #os.sep.join([args.e,"UD_POS_embeddings",metadata[NAME_TREEBANK]])
+    d["feats_external_embedding"] = None if d["feats_external_embedding"] =="None" else path_feats_embeddings #os.sep.join([args.e,"UD_FEATS_embeddings",metadata[NAME_TREEBANK]])
     d["lemmas_external_embedding"] = None
              
     
