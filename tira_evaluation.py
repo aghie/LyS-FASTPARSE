@@ -47,9 +47,9 @@ def get_models_dict(path_models):
 
 
 def select_model(lcode, tcode, dict_models):
-    
-    print dict_models
-    print lcode, tcode
+
+    dict_lan_pref = {'el': '0', 'en': '0', 'zh': '0', 'vi': '0', 'ca': '0', 'it': '0', 'eu': '0', 'ar': '0', 'ga': '0', 'cs': '0', 'et': '0', 'gl': '0', 'id': '0', 'es': 'ancora', 'ru': 'syntagrus', 'nl': '0', 'pt': 'br', 'no': 'bokmaal', 'tr': '0', 'lv': '0', 'grc': 'proiel', 'got': '0', 'ro': '0', 'pl': '0', 'fr': '0', 'bg': '0', 'hr': '0', 'de': '0', 'hu': '0', 'fa': '0', 'hi': '0', 'fi': 'ftb', 'da': '0', 'ja': '0', 'he': '0', 'kk': '0', 'la': 'ittb', 'ko': '0', 'sv': '0', 'ur': '0', 'sk': '0', 'cu': '0', 'uk': '0', 'sl': '0', 'ug': '0'}    
+
     
     try:
         #If we know the lang and treebank code
@@ -57,10 +57,11 @@ def select_model(lcode, tcode, dict_models):
     except KeyError:
         try:
             #If we know the lang but not the treebank code
-            return  dict_models[lcode]["0"]["model"],dict_models[lcode]["0"]["params"]  
+            treebank = dict_lan_pref[lcode]
+            return  dict_models[lcode][treebank]["model"],dict_models[lcode][treebank]["params"]  
         except KeyError:
             #We do not know the lang neither the treebank code
-            if "en" in dict_models:
+            if "en" in dict_models and "0" in dict_models["en"]:
                 return dict_models["en"]["0"]["model"],dict_models["en"]["0"]["params"]
             else:
                 return None,None
