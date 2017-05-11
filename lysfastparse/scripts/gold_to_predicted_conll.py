@@ -17,9 +17,10 @@ DEST_PREDICTEDPOS_DIR_TREEBANKS \
 DIR_UDPIPE_MODEL \
 PATH_BIN_UDPIPE
 
-PYTHONPATH="lysfastparse" python lysfastparse/scripts/gold_to_predicted_conll.py /data/david.vilares/ud-treebanks-conll2017-D \
-/data/david.vilares/ud-treebanks-conll2017-D-pPOS \
-/data/david.vilares/UDpipe/udpipe-ud-2.0-conll17-170315/models \
+PYTHONPATH="lysfastparse" python lysfastparse/scripts/gold_to_predicted_conll.py \
+/home/david.vilares/data/david.vilares/ud-treebanks-conll2017-D-l100 \
+/home/david.vilares/data/david.vilares/ud-treebanks-conll2017-D-l100-pPOS \
+/home/david.vilares/data/david.vilares/UDpipe/udpipe-ud-2.0-conll17-170315/models \
 /opt/udpipe-1.1.0-bin/bin-linux64/udpipe
 """
 
@@ -42,20 +43,28 @@ for path_gold_treebank, name_treebank in path_gold_treebanks:
     path_dev_conll_treebanks = [(path_gold_treebank+os.sep+f,f) for f in os.listdir(path_gold_treebank)
                                if f.endswith("dev.conllu")]
     
+    path_dest_treebank = path_dir_dest_predicted_treebanks+os.sep+name_treebank
+    
+    if os.path.exists(path_dest_treebank+os.sep+path_train_conll_treebank[0][1]):
+        print path_dest_treebank+os.sep+path_train_conll_treebank[0][1],"exists"
+        continue
+    
     if len(path_train_conll_treebank) != 1:
         warnings.warn("Path "+path_gold_treebank+" contains zero or more than one training data file in conllu format")
     
     if len(path_dev_conll_treebanks) != 1:
         warnings.warn("Path "+path_gold_treebank+" contains zero or more than one development data file in conllu format")
 
-    path_udpipe_model = get_udpipemodel(name_treebank, 
+    try:
+        path_udpipe_model = get_udpipemodel(name_treebank, 
                                               path_dir_udpipe_models)
+    except ValueError:
+        continue
     
     print ("Using UDpipe model"+path_udpipe_model)
     
     udpipe_model = UDPipe(path_udpipe_model,path_udpipe_bin)   
     
-    path_dest_treebank = path_dir_dest_predicted_treebanks+os.sep+name_treebank
         
     if not os.path.exists(path_dest_treebank):
         os.mkdir(path_dest_treebank)
