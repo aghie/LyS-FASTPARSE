@@ -1,10 +1,13 @@
-# LyS-FASTPARSE at CoNLL2017 shared task on end-to-end dependency parsing
+# LyS-FASTPARSE at CoNLL2017 UD Shared Task
 
-## A BIST-parser for non-projective transition-based dependency parsing
+## BIST-Covington: A non-projective greedy dependency parser with bidirectional LSTMs
 
-A BI-LSTM implementation of a transition-based Covington's algorithm with dynamic oracle for unrestricted dependency parsing.
+A bidirectional LSTM implementation of the Covington (2001) algorithm with dynamic oracle for non-projective transition-based dependency parsing.
 
-For segmentation and part-of-speech tagging the current system relies on the output provided by UDpipe.
+BIST-covington is a non-projective parser based on [BIST-parsers](https://github.com/elikip/bist-parser) (Kiperwasser and Goldberb, 2016)
+
+For segmentation and part-of-speech tagging the current system relies on the output provided by [UDpipe](https://github.com/ufal/udpipe) (Straka et al., 2016)
+
 
 
 ## Required software
@@ -17,17 +20,16 @@ Python 2.7 interpreter
 
 [tarjan](https://pypi.python.org/pypi/tarjan/)
 
-pyyaml
+[pyyaml](https://pypi.python.org/pypi/PyYAML)
 
-If you want to run our released pretrained models, make sure you have installed Boost-1.54.0 and that Dynet picks up such version when installing it. There is currently a dependency between the saved models and the version of BOOST that Dynet uses, so you might not be able to load the trained models if such version is different.
 
 ## Usage
 
 ### How to train a parser
 
-The command used to train the Covington parsers is pretty similar to the one of the original BIST-parsers, but we optionally included fine PoStags and feats as external embeddings too:
+The basic command to train a BIST-covington is pretty similar to the one use to train a BIST-parser:
 
-	python lys_fastparse.py \
+	python train.py \
 	--dynet-seed 123456789 \
 	--dynet-mem $DYNET_MEM \
 	--epochs 30 \
@@ -40,15 +42,12 @@ The command used to train the Covington parsers is pretty similar to the one of 
 	--kb $KB \
 	--lstmdims $LSTMDIMS \
 	--wembedding $WEMBEDDING \
-	--extrn $PATH_EMBEDDINGS \
-	--extrn_pos $PATH_POS_EMBEDDINGS \
-	--extrn_feats $PATH_FEATS_EMBEDDINGS \
 	--userl \
 	--usehead \
 
-For a description of all available options type:
+For a description of all available options (external embeddings, scope of the windows, ...) type:
 
-	python lys_fastparse.py --help 
+	python train.py --help 
 	
 ## How to run a parser
 
@@ -71,7 +70,18 @@ To run a trained model:
 
 ## Citation
 
-TBA
+To appear
+
+	@inproceedings{bist-covington,
+	author = {David Vilares and Carlos G\'{o}mez-Rodr\'{\i}guez},
+	title = {{A non-projective greedy dependency parser with bidirectional LSTMs}},
+	booktitle = {{Proceedings of the CoNLL 2017 Shared Task: Multilingual Parsing from Raw Text to Universal Dependencies}},
+	publisher = {Association for Computational Linguistics},
+	pages = {1--10},
+	location =	{Vancouver, Canada},
+	year={2017}
+	}
+
 
 ## License
 
