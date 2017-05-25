@@ -4,7 +4,7 @@
 
 A bidirectional LSTM implementation of the Covington (2001) algorithm with dynamic oracle for non-projective transition-based dependency parsing.
 
-BIST-covington is a non-projective parser based on [BIST-parsers](https://github.com/elikip/bist-parser) (Kiperwasser and Goldberb, 2016)
+BIST-covington is a non-projective parser based on [BIST-parsers](https://github.com/elikip/bist-parser) (Kiperwasser and Goldberg, 2016)
 
 For segmentation and part-of-speech tagging the current system relies on the output provided by [UDpipe](https://github.com/ufal/udpipe) (Straka et al., 2016)
 
